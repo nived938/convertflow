@@ -1,9 +1,11 @@
 create table if not exists public.convertflow_users (
   id text primary key,
   email text not null unique,
-  password_hash text not null,
+  password_hash text,
   created_at timestamptz not null default now()
 );
+
+alter table public.convertflow_users add column if not exists password_hash text;
 
 create table if not exists public.login_events (
   id uuid primary key,
@@ -27,5 +29,4 @@ alter table public.convertflow_users enable row level security;
 alter table public.login_events enable row level security;
 alter table public.verification_codes enable row level security;
 
--- The backend uses the Supabase service-role key. Never expose it in Vercel or browser code.
--- Existing installations can safely run this file again.
+-- The backend uses the Supabase service-role key. Never expose it in frontend code.
