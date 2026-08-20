@@ -20,6 +20,7 @@ function getCodeTtlMinutes() {
   return Number.isFinite(value) ? Math.min(Math.max(value, 5), 30) : 10;
 }
 function hashCode(code) {
+  if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET is not configured.");
   return crypto.createHmac("sha256", process.env.JWT_SECRET).update(code).digest("hex");
 }
 function configReady() {
@@ -46,7 +47,10 @@ async function sendEmailCode(user, type) {
     headers: { "Content-Type": "application/json", "x-convertflow-secret": process.env.N8N_WEBHOOK_SECRET },
     body: JSON.stringify({ type, email: user.email, code, expiresInMinutes: getCodeTtlMinutes(), expiresAt }),
   });
-  if (!response.ok) throw new Error(`n8n responded with ${response.status}`);
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`n8n responded with ${response.status}${body ? `: ${body.slice(0, 300)}` : ""}`);
+  }
   return { codeHash: hashCode(code), expiresAt };
 }
 
@@ -58,11 +62,11 @@ async function createVerification(user, type) {
 
 router.post("/register", async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password are required." });
+    const { email, password } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail || !password) return res.status(400).json({ success: false, message: "Email and password are required." });
     if (password.length < 8) return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
     if (!configReady()) return verificationUnavailable(res);
-    const normalizedEmail = normalizeEmail(email);
     if (await findUserByEmail(normalizedEmail)) return res.status(409).json({ success: false, message: "An account with this email already exists." });
     const user = await createUser(normalizedEmail, await bcrypt.hash(password, 12));
     try {
@@ -70,31 +74,53 @@ router.post("/register", async (req, res) => {
       await recordLoginEvent(user, "registration_verification_requested");
     } catch (error) {
       console.error("Registration verification email error:", error);
-      return res.status(503).json({ success: false, message: "We could not send your verification code. Please try again." });
+      return res.status(503).json({ success: false, message: "We could not send your verification code. Please check the n8n email workflow." });
     }
     return res.status(201).json({ success: true, requiresVerification: true, email: user.email });
   } catch (error) {
     console.error("Registration error:", error);
-    return res.status(500).json({ success: false, message: "Could not create account." });
+    return res.status(503).json({ success: false, message: "Authentication database is unavailable. Check the Render Supabase environment variables and logs." });
   }
 });
 
 router.post("/login", async (req, res) => {
   try {
-    const user = await findUserByEmail(normalizeEmail(req.body.email));
-    if (!user || !req.body.password || !(await bcrypt.compare(req.body.password, user.password_hash))) return res.status(401).json({ success: false, message: "Invalid email or password." });
+    const { email, password } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail || !password) return res.status(400).json({ success: false, message: "Email and password are required." });
+
+    const user = await findUserByEmail(normalizedEmail);
+
+    // A missing password hash can happen for accounts that existed before the
+    // Supabase migration. Never pass an undefined hash to bcrypt, because that
+    // becomes a server error instead of a normal authentication failure.
+    if (!user || !user.password_hash) {
+      return res.status(401).json({ success: false, message: "Invalid email or password. If this is an older ConvertFlow account, create the account again after the Supabase migration." });
+    }
+
+    let passwordMatches = false;
+    try {
+      passwordMatches = await bcrypt.compare(password, user.password_hash);
+    } catch (error) {
+      console.error("Password comparison error:", error);
+      return res.status(503).json({ success: false, message: "The account password data is unavailable. Please create the account again." });
+    }
+
+    if (!passwordMatches) return res.status(401).json({ success: false, message: "Invalid email or password." });
     if (!configReady()) return verificationUnavailable(res);
+
     try {
       await createVerification(user, "login_code");
       await recordLoginEvent(user, "login_verification_requested");
     } catch (error) {
       console.error("Login verification email error:", error);
-      return res.status(503).json({ success: false, message: "We could not send your verification code. Please try again." });
+      return res.status(503).json({ success: false, message: "We could not send your verification code. Please check the n8n email workflow." });
     }
+
     return res.json({ success: true, requiresVerification: true, email: user.email });
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({ success: false, message: "Could not sign in." });
+    return res.status(503).json({ success: false, message: "Authentication database is unavailable. Check the Render Supabase environment variables and backend logs." });
   }
 });
 
@@ -119,21 +145,22 @@ async function verifyCode(user, type, code) {
 
 router.post("/verify-login", async (req, res) => {
   try {
-    const user = await findUserByEmail(normalizeEmail(req.body.email));
-    const code = String(req.body.code || "").trim();
+    const user = await findUserByEmail(normalizeEmail(req.body?.email));
+    const code = String(req.body?.code || "").trim();
     if (!user || !/^\d{6}$/.test(code)) return res.status(400).json({ success: false, message: "Enter the six-digit code from your email." });
     await verifyCode(user, "login_code", code);
     setSessionCookie(res, user);
     await recordLoginEvent(user, "login_success");
     return res.json({ success: true, user: { id: user.id, email: user.email } });
   } catch (error) {
+    console.error("Login verification error:", error);
     return res.status(401).json({ success: false, message: error.message || "Could not verify your code." });
   }
 });
 
 router.post("/request-password-reset", async (req, res) => {
   try {
-    const user = await findUserByEmail(normalizeEmail(req.body.email));
+    const user = await findUserByEmail(normalizeEmail(req.body?.email));
     if (!user) return res.json({ success: true });
     if (!configReady()) return verificationUnavailable(res);
     await createVerification(user, "password_reset");
@@ -141,32 +168,40 @@ router.post("/request-password-reset", async (req, res) => {
     return res.json({ success: true });
   } catch (error) {
     console.error("Password reset request error:", error);
-    return res.status(503).json({ success: false, message: "We could not send your reset code. Please try again." });
+    return res.status(503).json({ success: false, message: "We could not send your reset code. Please check the n8n email workflow." });
   }
 });
 
 router.post("/reset-password", async (req, res) => {
   try {
-    const user = await findUserByEmail(normalizeEmail(req.body.email));
-    const code = String(req.body.code || "").trim();
-    const password = req.body.password;
+    const user = await findUserByEmail(normalizeEmail(req.body?.email));
+    const code = String(req.body?.code || "").trim();
+    const password = req.body?.password;
     if (!user || !/^\d{6}$/.test(code) || !password || password.length < 8) return res.status(400).json({ success: false, message: "Enter a valid code and a password with at least 8 characters." });
     await verifyCode(user, "password_reset", code);
     await updateUserPassword(user.id, await bcrypt.hash(password, 12));
     await recordLoginEvent(user, "password_reset_success");
     return res.json({ success: true });
   } catch (error) {
+    console.error("Password reset error:", error);
     return res.status(401).json({ success: false, message: error.message || "Could not reset password." });
   }
 });
 
-router.post("/logout", (req, res) => { res.clearCookie("convertflow_token", { sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", secure: process.env.NODE_ENV === "production" }); res.json({ success: true }); });
+router.post("/logout", (req, res) => {
+  res.clearCookie("convertflow_token", { sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", secure: process.env.NODE_ENV === "production" });
+  res.json({ success: true });
+});
+
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const user = await findUserById(req.user.userId);
     if (!user) return res.status(404).json({ success: false, message: "User not found." });
     return res.json({ success: true, user: { id: user.id, email: user.email, created_at: user.created_at } });
-  } catch (error) { return res.status(500).json({ success: false, message: "Could not load account." }); }
+  } catch (error) {
+    console.error("Current user error:", error);
+    return res.status(500).json({ success: false, message: "Could not load account." });
+  }
 });
 
 export default router;
