@@ -12,24 +12,16 @@
     },
     {
       "parameters": {
-        "jsCode": "const crypto = require('crypto');\nconst body = $json.body || $json;\nconst action = String(body.action || '').toLowerCase();\nconst authorization = String($json.headers?.authorization || $json.headers?.Authorization || '');\nconst token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';\nconst secret = String($env.ADMIN_CONTROL_SECRET || '');\nconst serviceId = String($env.RENDER_SERVICE_ID || '');\nconst apiKey = String($env.RENDER_API_KEY || '');\n\nfunction verifyToken(value) {\n  try {\n    if (!secret || !value) return false;\n    const [encoded, signature] = value.split('.');\n    if (!encoded || !signature) return false;\n    const expected = crypto.createHmac('sha256', secret).update(encoded).digest('base64url');\n    const a = Buffer.from(signature);\n    const b = Buffer.from(expected);\n    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;\n    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));\n    return payload.role === 'admin' && Number(payload.exp) > Math.floor(Date.now() / 1000);\n  } catch { return false; }\n}\n\nif (!verifyToken(token)) return [{ json: { success: false, message: 'Unauthorized or expired admin session.' } }];\nif (!serviceId || !apiKey) return [{ json: { success: false, message: 'Render control is not configured in n8n.' } }];\nif (!['status', 'on', 'off'].includes(action)) return [{ json: { success: false, message: 'Invalid action.' } }];\n\nconst base = `https://api.render.com/v1/services/${serviceId}`;\nlet method = 'GET';\nlet url = base;\nif (action === 'on') { method = 'POST'; url = `${base}/resume`; }\nif (action === 'off') { method = 'POST'; url = `${base}/suspend`; }\n\ntry {\n  const response = await this.helpers.httpRequest({ method, url, headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, returnFullResponse: true });\n  let data = response.body;\n  if (typeof data === 'string' && data.trim()) { try { data = JSON.parse(data); } catch {} }\n  let status = 'unknown';\n  if (action === 'off') status = 'suspended';\n  else if (action === 'on') status = 'resuming';\n  else status = data?.suspended === 'suspended' ? 'suspended' : 'running';\n  return [{ json: { success: true, action, status, message: action === 'status' ? `Backend is ${status}.` : `Render ${action === 'on' ? 'resume' : 'suspend'} request accepted.`, renderStatusCode: response.statusCode } }];\n} catch (error) {\n  const statusCode = error.statusCode || error.response?.status || 502;\n  return [{ json: { success: false, message: `Render API request failed with HTTP ${statusCode}.`, renderStatusCode: statusCode } }];\n}"
+        "jsCode": "const body = $json.body || $json;\nconst action = String(body.action || '').toLowerCase();\nconst suppliedSecret = String($json.headers?.['x-convertflow-admin-secret'] || $json.headers?.['X-Convertflow-Admin-Secret'] || '');\nconst secret = String($env.N8N_RENDER_CONTROL_SECRET || '');\nconst serviceId = String($env.RENDER_SERVICE_ID || '');\nconst apiKey = String($env.RENDER_API_KEY || '');\n\nif (!secret || !serviceId || !apiKey) return [{ json: { success: false, message: 'Render control is not configured in n8n.' } }];\nif (!suppliedSecret || suppliedSecret !== secret) return [{ json: { success: false, message: 'Unauthorized control request.' } }];\nif (!['status', 'on', 'off'].includes(action)) return [{ json: { success: false, message: 'Invalid action.' } }];\n\nconst base = `https://api.render.com/v1/services/${serviceId}`;\nlet method = 'GET';\nlet url = base;\nif (action === 'on') { method = 'POST'; url = `${base}/resume`; }\nif (action === 'off') { method = 'POST'; url = `${base}/suspend`; }\n\ntry {\n  const response = await this.helpers.httpRequest({ method, url, headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, returnFullResponse: true });\n  let data = response.body;\n  if (typeof data === 'string' && data.trim()) { try { data = JSON.parse(data); } catch {} }\n  let status = 'unknown';\n  if (action === 'off') status = 'suspended';\n  else if (action === 'on') status = 'resuming';\n  else {\n    const serviceStatus = String(data?.suspended || data?.status || data?.service?.suspended || data?.service?.status || '').toLowerCase();\n    status = serviceStatus.includes('suspend') ? 'suspended' : (serviceStatus || 'running');\n  }\n  return [{ json: { success: true, action, status, message: action === 'status' ? `Backend is ${status}.` : `Render ${action === 'on' ? 'resume' : 'suspend'} request accepted.`, renderStatusCode: response.statusCode } }];\n} catch (error) {\n  const statusCode = error.statusCode || error.response?.status || 502;\n  return [{ json: { success: false, message: `Render API request failed with HTTP ${statusCode}.`, renderStatusCode: statusCode } }];\n}"
       },
       "id": "9e6d4a2c-8c0d-44b8-a4e1-0a3e5e7d9b21",
-      "name": "Verify Session and Control Render",
+      "name": "Verify Node Backend and Control Render",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [260, 0]
     },
     {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}",
-        "options": { "responseHeaders": { "entries": [
-          { "name": "Access-Control-Allow-Origin", "value": "https://convertflow-seven-delta.vercel.app" },
-          { "name": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" },
-          { "name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" }
-        ] } }
-      },
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json }}", "options": {} },
       "id": "4d1e8b7a-3c5f-4f9a-b2d6-7e0c1a5f8b33",
       "name": "Return Control Result",
       "type": "n8n-nodes-base.respondToWebhook",
@@ -38,13 +30,12 @@
     }
   ],
   "connections": {
-    "Render Control Webhook": { "main": [[{ "node": "Verify Session and Control Render", "type": "main", "index": 0 }]] },
-    "Verify Session and Control Render": { "main": [[{ "node": "Return Control Result", "type": "main", "index": 0 }]] }
+    "Render Control Webhook": { "main": [[{ "node": "Verify Node Backend and Control Render", "type": "main", "index": 0 }]] },
+    "Verify Node Backend and Control Render": { "main": [[{ "node": "Return Control Result", "type": "main", "index": 0 }]] }
   },
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "versionId": "2",
-  "meta": { "templateCredsSetupCompleted": true },
+  "versionId": "3",
   "pinData": {},
   "tags": []
 }
