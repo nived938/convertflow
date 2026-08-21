@@ -1,160 +1,102 @@
 {
-  "name": "ConvertFlow - Authentication and Maintenance Notifications",
+  "name": "ConvertFlow Backend Keep Alive + Failure Alert",
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "convertflow-auth-email",
-        "responseMode": "responseNode",
-        "options": {}
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+        }
       },
-      "id": "auth-webhook",
-      "name": "ConvertFlow auth webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [200, 240]
+      "id": "schedule",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-520, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://convertflow-backend.onrender.com",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "User-Agent", "value": "ConvertFlow-n8n-KeepAlive/1.0" }] },
+        "options": { "timeout": 30000, "response": { "response": { "response": { "neverError": true, "fullResponse": true } } } }
+      },
+      "id": "ping",
+      "name": "Call ConvertFlow Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-280, 0],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
           "conditions": [{
-            "leftValue": "={{ $json.headers['x-convertflow-secret'] }}",
-            "rightValue": "={{ $env.CONVERTFLOW_WEBHOOK_SECRET }}",
-            "operator": { "type": "string", "operation": "equals" }
+            "leftValue": "={{ $json.statusCode || 0 }}",
+            "rightValue": 400,
+            "operator": { "type": "number", "operation": "lt" }
           }],
           "combinator": "and"
         },
         "options": {}
       },
-      "id": "auth-secret",
-      "name": "Check ConvertFlow secret",
+      "id": "online-check",
+      "name": "Backend Responded?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [420, 240]
+      "position": [-40, 0]
     },
     {
       "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
-          "conditions": [{
-            "leftValue": "={{ $json.body.type }}",
-            "rightValue": "maintenance_alert",
-            "operator": { "type": "string", "operation": "equals" }
-          }],
-          "combinator": "and"
-        },
+        "assignments": { "assignments": [{ "name": "status", "value": "online", "type": "string" }, { "name": "checkedAt", "value": "={{ $now.toISO() }}", "type": "string" }] },
         "options": {}
       },
-      "id": "is-maintenance",
-      "name": "Is maintenance alert?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [640, 240]
+      "id": "online",
+      "name": "Backend Online",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, -120]
     },
     {
       "parameters": {
-        "fromEmail": "={{ $env.CONVERTFLOW_FROM_EMAIL }}",
-        "toEmail": "={{ $env.CONVERTFLOW_ADMIN_EMAIL }}",
-        "subject": "ConvertFlow backend maintenance alert",
-        "emailFormat": "text",
-        "text": "=ConvertFlow backend health check failed.\n\nWebsite: {{ $json.body.website }}\nError: {{ $json.body.message }}\nStatus: {{ $json.body.status || 'unknown' }}\nTime: {{ $json.body.occurredAt }}\n\nPlease check the Render backend and its logs.",
+        "assignments": { "assignments": [{ "name": "status", "value": "offline", "type": "string" }, { "name": "checkedAt", "value": "={{ $now.toISO() }}", "type": "string" }, { "name": "errorDetails", "value": "={{ JSON.stringify($json) }}", "type": "string" }] },
         "options": {}
       },
-      "id": "maintenance-email",
-      "name": "Email administrator",
-      "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2.1,
-      "position": [860, 420],
-      "credentials": {
-        "smtp": {
-          "id": "REPLACE_WITH_YOUR_SMTP_CREDENTIAL_ID",
-          "name": "ConvertFlow SMTP"
-        }
-      }
+      "id": "failure-data",
+      "name": "Prepare Failure Alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 120]
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={\"success\":true}",
-        "options": {}
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { from: 'ConvertFlow Monitor <YOUR_VERIFIED_RESEND_EMAIL>', to: ['nivedsreejaharidasan@gmail.com'], subject: 'ConvertFlow backend is offline', html: '<h2>ConvertFlow backend health alert</h2><p>The n8n monitor could not get a successful response from <strong>https://convertflow-backend.onrender.com</strong>.</p><p><strong>Time:</strong> ' + $json.checkedAt + '</p><p><strong>Details:</strong></p><pre>' + $json.errorDetails + '</pre><p>Check Render and the backend logs.</p>' } }}",
+        "options": { "timeout": 30000 }
       },
-      "id": "maintenance-response",
-      "name": "Respond maintenance success",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.4,
-      "position": [1080, 420]
-    },
-    {
-      "parameters": {
-        "fromEmail": "={{ $env.CONVERTFLOW_FROM_EMAIL }}",
-        "toEmail": "={{ $json.body.email }}",
-        "subject": "={{ $json.body.type === 'password_reset' ? 'Reset your ConvertFlow password' : 'Your ConvertFlow verification code' }}",
-        "emailFormat": "text",
-        "text": "={{ $json.body.type === 'password_reset' ? 'Your ConvertFlow password reset code is ' + $json.body.code + '. It expires in ' + $json.body.expiresInMinutes + ' minutes. If you did not request a password reset, you can ignore this email.' : 'Your ConvertFlow security code is ' + $json.body.code + '. It expires in ' + $json.body.expiresInMinutes + ' minutes. If you did not request it, you can ignore this email.' }}",
-        "options": {}
-      },
-      "id": "auth-email",
-      "name": "Send authentication email",
-      "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2.1,
-      "position": [860, 160],
-      "credentials": {
-        "smtp": {
-          "id": "REPLACE_WITH_YOUR_SMTP_CREDENTIAL_ID",
-          "name": "ConvertFlow SMTP"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={\"success\":true}",
-        "options": {}
-      },
-      "id": "auth-response",
-      "name": "Respond authentication success",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.4,
-      "position": [1080, 160]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={\"success\":false,\"message\":\"Unauthorized webhook\"}",
-        "options": { "responseCode": 401 }
-      },
-      "id": "unauthorized-response",
-      "name": "Respond unauthorized",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.4,
-      "position": [640, 620]
+      "id": "resend-alert",
+      "name": "Email Administrator with Resend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 120],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE_WITH_RESEND_HTTP_HEADER_CREDENTIAL_ID", "name": "ConvertFlow Resend API" } }
     }
   ],
   "connections": {
-    "ConvertFlow auth webhook": {
-      "main": [[{ "node": "Check ConvertFlow secret", "type": "main", "index": 0 }]]
-    },
-    "Check ConvertFlow secret": {
-      "main": [
-        [{ "node": "Is maintenance alert?", "type": "main", "index": 0 }],
-        [{ "node": "Respond unauthorized", "type": "main", "index": 0 }]
-      ]
-    },
-    "Is maintenance alert?": {
-      "main": [
-        [{ "node": "Email administrator", "type": "main", "index": 0 }],
-        [{ "node": "Send authentication email", "type": "main", "index": 0 }]
-      ]
-    },
-    "Email administrator": {
-      "main": [[{ "node": "Respond maintenance success", "type": "main", "index": 0 }]]
-    },
-    "Send authentication email": {
-      "main": [[{ "node": "Respond authentication success", "type": "main", "index": 0 }]]
-    }
+    "Every 5 Minutes": { "main": [[{ "node": "Call ConvertFlow Backend", "type": "main", "index": 0 }]] },
+    "Call ConvertFlow Backend": { "main": [[{ "node": "Backend Responded?", "type": "main", "index": 0 }]] },
+    "Backend Responded?": { "main": [[{ "node": "Backend Online", "type": "main", "index": 0 }], [{ "node": "Prepare Failure Alert", "type": "main", "index": 0 }]] },
+    "Prepare Failure Alert": { "main": [[{ "node": "Email Administrator with Resend", "type": "main", "index": 0 }]] }
   },
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "versionId": "2"
+  "versionId": "3"
 }
