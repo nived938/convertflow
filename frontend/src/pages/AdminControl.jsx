@@ -14,11 +14,8 @@ const cardStyle = {
 
 async function control(action, password) {
   if (!CONTROL_URL) throw new Error("Admin control webhook is not configured.");
-  const response = await fetch(CONTROL_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, password }),
-  });
+  const body = new URLSearchParams({ action, password });
+  const response = await fetch(CONTROL_URL, { method: "POST", body });
   const text = await response.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
@@ -80,9 +77,7 @@ export default function AdminControl() {
             <h1 style={{ margin: "8px 0", fontSize: "clamp(28px, 5vw, 42px)" }}>Backend Control</h1>
             <p style={{ margin: 0, opacity: .72 }}>Control the Render backend without exposing your Render API key to the browser.</p>
           </div>
-          <div style={{ padding: "8px 13px", borderRadius: 999, background: isOnline ? "rgba(34,197,94,.14)" : isOffline ? "rgba(239,68,68,.14)" : "rgba(148,163,184,.14)", color: isOnline ? "#22c55e" : isOffline ? "#ef4444" : "#94a3b8", fontWeight: 700 }}>
-            {String(status).toUpperCase()}
-          </div>
+          <div style={{ padding: "8px 13px", borderRadius: 999, background: isOnline ? "rgba(34,197,94,.14)" : isOffline ? "rgba(239,68,68,.14)" : "rgba(148,163,184,.14)", color: isOnline ? "#22c55e" : isOffline ? "#ef4444" : "#94a3b8", fontWeight: 700 }}>{String(status).toUpperCase()}</div>
         </div>
 
         <div style={{ marginTop: 28, display: "grid", gap: 14 }}>
