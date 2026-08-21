@@ -26,7 +26,8 @@ export default function BackendGuard({ children }) {
 
     async function check() {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/health`, { cache: "no-store" });
+        // API_BASE_URL already includes the /api prefix in production.
+        const response = await fetch(`${API_BASE_URL}/health`, { cache: "no-store" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         if (!cancelled) {
           setReady(true);
