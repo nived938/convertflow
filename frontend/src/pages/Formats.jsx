@@ -1,0 +1,5 @@
+import Header from "../components/Header";
+import Footer from "../components/Footer";
+import {Link} from "react-router-dom";
+const groups={Images:["JPG","JPEG","PNG","WEBP","GIF","BMP","TIFF","AVIF","ICO","HEIC"],Videos:["MP4","WEBM","AVI","MKV","MOV","FLV","MPEG","MPG","M4V","TS","3GP","OGV"],Audio:["MP3","WAV","AAC","OGG","FLAC","M4A","OPUS","AIFF","AC3","AMR","WMA"]};
+export default function Formats(){return <div className="app"><Header/><main className="content-page"><span className="section-label">SUPPORTED FORMATS</span><h1>File formats ConvertFlow supports</h1><p>Choose a converter and move between popular image, video and audio formats.</p>{Object.entries(groups).map(([name,formats])=><section className="info-card" key={name}><h2>{name}</h2><div className="format-chips">{formats.map(f=><span key={f}>{f}</span>)}</div><Link className="auth-submit" style={{display:"inline-flex",width:"auto",marginTop:20}} to={`/services/${name.slice(0,-1).toLowerCase()}`}>Open {name.slice(0,-1)} converter</Link></section>)}</main><Footer/></div>}
