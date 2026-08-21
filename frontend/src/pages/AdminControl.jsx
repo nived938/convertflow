@@ -1,19 +1,31 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const CONTROL_URL = (import.meta.env.VITE_ADMIN_CONTROL_WEBHOOK_URL || "").replace(/\/$/, "");
+// The webhook URL is public endpoint information, not a secret. Keep the Vercel
+// environment variable override, but provide the production URL as a safe default
+// so the admin page cannot break just because Vercel was deployed without the env var.
+const CONTROL_URL = (
+  import.meta.env.VITE_ADMIN_CONTROL_WEBHOOK_URL ||
+  "https://n8n-2-rgl6.onrender.com/webhook/convertflow-render-control"
+).replace(/\/$/, "");
 
 async function control(action, token) {
-  if (!CONTROL_URL) throw new Error("Admin control webhook is not configured.");
   const response = await fetch(CONTROL_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ action }),
   });
+
   const text = await response.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
-  if (!response.ok || data.success === false) throw new Error(data.message || `Control request failed with HTTP ${response.status}.`);
+
+  if (!response.ok || data.success === false) {
+    throw new Error(data.message || `Control request failed with HTTP ${response.status}.`);
+  }
   return data;
 }
 
@@ -42,7 +54,10 @@ export default function AdminControl() {
   }, [token, logout]);
 
   useEffect(() => {
-    if (!token) { navigate("/admin", { replace: true }); return undefined; }
+    if (!token) {
+      navigate("/admin", { replace: true });
+      return undefined;
+    }
     refresh();
     const timer = setInterval(refresh, 15000);
     return () => clearInterval(timer);
@@ -60,7 +75,9 @@ export default function AdminControl() {
     } catch (error) {
       setMessage(error.message);
       if (/unauthorized|invalid|expired/i.test(error.message)) logout();
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   const isOnline = ["running", "live", "active"].includes(String(status).toLowerCase());
