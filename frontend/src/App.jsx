@@ -12,6 +12,7 @@ import ServicePage from "./pages/ServicePage";
 import LocationPage from "./pages/LocationPage";
 import BackendGuard from "./components/BackendGuard";
 import SeoManager from "./components/SeoManager";
+import AdminLogin from "./pages/AdminLogin";
 import AdminControl from "./pages/AdminControl";
 
 function PublicRoutes() {
@@ -39,7 +40,8 @@ export default function App() {
     <BrowserRouter>
       <SeoManager />
       <Routes>
-        <Route path="/admin" element={<AdminControl />} />
+        <Route path="/admin" element={<AdminLogin />} />
+        <Route path="/admin/control" element={<AdminControl />} />
         <Route path="*" element={<PublicRoutes />} />
       </Routes>
     </BrowserRouter>
