@@ -19,8 +19,8 @@ export async function checkBackendHealth() {
 export async function convertFile(file, outputFormat, onProgress) {
   const formData = new FormData(); formData.append("file", file); formData.append("outputFormat", outputFormat);
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest(); xhr.open("POST", `${API_BASE_URL}/conversion/convert"); xhr.withCredentials = true; xhr.responseType = "blob";
-    xhr.setRequestHeader("Authorization", localStorage.getItem("convertflow_token") ? `Bearer ${localStorage.getItem("convertflow_token")}` : "");
+    const xhr = new XMLHttpRequest(); xhr.open("POST", `${API_BASE_URL}/conversion/convert`); xhr.withCredentials = true; xhr.responseType = "blob";
+    const token = localStorage.getItem("convertflow_token"); if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress((e.loaded / e.total) * 100); };
     xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve(xhr.response) : reject(new Error("The server could not convert this file."));
     xhr.onerror = () => reject(new Error("Could not connect to the conversion server.")); xhr.onabort = () => reject(new Error("Conversion was cancelled.")); xhr.send(formData);
