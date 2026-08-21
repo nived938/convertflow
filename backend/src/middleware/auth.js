@@ -1,65 +1,32 @@
 import jwt from "jsonwebtoken";
 
-export function requireAuth(
-  req,
-  res,
-  next
-) 
-{
-  const token =
-    req.cookies?.convertflow_token;
+function getToken(req) {
+  const cookieToken = req.cookies?.convertflow_token;
+  if (cookieToken) return cookieToken;
 
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      message:
-        "You must be logged in.",
-    });
-  }
+  const authorization = req.headers.authorization || "";
+  if (authorization.toLowerCase().startsWith("bearer ")) return authorization.slice(7).trim();
+  return null;
+}
 
+export function requireAuth(req, res, next) {
+  const token = getToken(req);
+  if (!token) return res.status(401).json({ success: false, message: "You must be logged in." });
   try {
-    const decoded =
-      jwt.verify(
-        token,
-        process.env.JWT_SECRET
-      );
-
-    req.user = decoded;
-
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
     next();
   } catch {
-    return res.status(401).json({
-      success: false,
-      message:
-        "Your session has expired.",
-    });
+    return res.status(401).json({ success: false, message: "Your session has expired." });
   }
 }
 
-export function optionalAuth(
-  req,
-  res,
-  next
-) {
-  const token =
-    req.cookies?.convertflow_token;
-
+export function optionalAuth(req, res, next) {
+  const token = getToken(req);
   if (!token) {
     req.user = null;
     return next();
   }
-
-  try {
-    const decoded =
-      jwt.verify(
-        token,
-        process.env.JWT_SECRET
-      );
-
-    req.user = decoded;
-  } catch {
-    req.user = null;
-  }
-
+  try { req.user = jwt.verify(token, process.env.JWT_SECRET); }
+  catch { req.user = null; }
   next();
 }
