@@ -39,6 +39,58 @@ function verificationUnavailable(res) {
   return res.status(503).json({ success: false, message: "Email verification is not configured yet. Please try again later." });
 }
 
+function supabaseConfig() {
+  const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Supabase is not configured on the backend.");
+  return { url, key };
+}
+
+async function supabaseAuthRequest(path, options = {}) {
+  const { url, key } = supabaseConfig();
+  const response = await fetch(`${url}/auth/v1${path}`, {
+    ...options,
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
+  return { response, data };
+}
+
+async function signInWithSupabase(email, password) {
+  const { response, data } = await supabaseAuthRequest("/token?grant_type=password", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) return null;
+  return data.user || null;
+}
+
+async function findSupabaseAuthUser(email) {
+  const { response, data } = await supabaseAuthRequest("/admin/users?page=1&per_page=1000", { method: "GET" });
+  if (!response.ok) throw new Error(`Supabase Auth user lookup failed (${response.status}).`);
+  return (data.users || []).find((candidate) => normalizeEmail(candidate.email) === email) || null;
+}
+
+async function updateSupabaseAuthPassword(email, password) {
+  const authUser = await findSupabaseAuthUser(email);
+  if (!authUser?.id) return false;
+  const { response, data } = await supabaseAuthRequest(`/admin/users/${authUser.id}`, {
+    method: "PUT",
+    body: JSON.stringify({ password, email_confirm: true }),
+  });
+  if (!response.ok) {
+    throw new Error(`Supabase Auth password update failed (${response.status}): ${data?.message || data?.msg || "unknown error"}`);
+  }
+  return true;
+}
+
 async function sendEmailCode(user, type) {
   const code = crypto.randomInt(100000, 1000000).toString();
   const expiresAt = new Date(Date.now() + getCodeTtlMinutes() * 60000).toISOString();
@@ -89,24 +141,28 @@ router.post("/login", async (req, res) => {
     const normalizedEmail = normalizeEmail(email);
     if (!normalizedEmail || !password) return res.status(400).json({ success: false, message: "Email and password are required." });
 
-    const user = await findUserByEmail(normalizedEmail);
+    let user = await findUserByEmail(normalizedEmail);
 
-    // A missing password hash can happen for accounts that existed before the
-    // Supabase migration. Never pass an undefined hash to bcrypt, because that
-    // becomes a server error instead of a normal authentication failure.
     if (!user || !user.password_hash) {
-      return res.status(401).json({ success: false, message: "Invalid email or password. If this is an older ConvertFlow account, create the account again after the Supabase migration." });
+      const authUser = await signInWithSupabase(normalizedEmail, password);
+      if (!authUser) {
+        return res.status(401).json({ success: false, message: "Invalid email or password." });
+      }
+
+      if (!user) {
+        user = await createUser(normalizedEmail, null);
+      }
+    } else {
+      let passwordMatches = false;
+      try {
+        passwordMatches = await bcrypt.compare(password, user.password_hash);
+      } catch (error) {
+        console.error("Password comparison error:", error);
+        return res.status(503).json({ success: false, message: "The account password data is unavailable. Please create the account again." });
+      }
+      if (!passwordMatches) return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
-    let passwordMatches = false;
-    try {
-      passwordMatches = await bcrypt.compare(password, user.password_hash);
-    } catch (error) {
-      console.error("Password comparison error:", error);
-      return res.status(503).json({ success: false, message: "The account password data is unavailable. Please create the account again." });
-    }
-
-    if (!passwordMatches) return res.status(401).json({ success: false, message: "Invalid email or password." });
     if (!configReady()) return verificationUnavailable(res);
 
     try {
@@ -120,7 +176,7 @@ router.post("/login", async (req, res) => {
     return res.json({ success: true, requiresVerification: true, email: user.email });
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(503).json({ success: false, message: "Authentication database is unavailable. Check the Render Supabase environment variables and backend logs." });
+    return res.status(503).json({ success: false, message: "Authentication database is unavailable. Check the Render Supabase environment variables and logs." });
   }
 });
 
@@ -160,8 +216,16 @@ router.post("/verify-login", async (req, res) => {
 
 router.post("/request-password-reset", async (req, res) => {
   try {
-    const user = await findUserByEmail(normalizeEmail(req.body?.email));
-    if (!user) return res.json({ success: true });
+    const normalizedEmail = normalizeEmail(req.body?.email);
+    const user = await findUserByEmail(normalizedEmail);
+    if (!user) {
+      const authUser = await findSupabaseAuthUser(normalizedEmail);
+      if (!authUser) return res.json({ success: true });
+      const syncUser = await createUser(normalizedEmail, null);
+      await createVerification(syncUser, "password_reset");
+      await recordLoginEvent(syncUser, "password_reset_requested");
+      return res.json({ success: true });
+    }
     if (!configReady()) return verificationUnavailable(res);
     await createVerification(user, "password_reset");
     await recordLoginEvent(user, "password_reset_requested");
@@ -174,12 +238,19 @@ router.post("/request-password-reset", async (req, res) => {
 
 router.post("/reset-password", async (req, res) => {
   try {
-    const user = await findUserByEmail(normalizeEmail(req.body?.email));
+    const normalizedEmail = normalizeEmail(req.body?.email);
+    const user = await findUserByEmail(normalizedEmail);
     const code = String(req.body?.code || "").trim();
     const password = req.body?.password;
     if (!user || !/^\d{6}$/.test(code) || !password || password.length < 8) return res.status(400).json({ success: false, message: "Enter a valid code and a password with at least 8 characters." });
     await verifyCode(user, "password_reset", code);
-    await updateUserPassword(user.id, await bcrypt.hash(password, 12));
+
+    if (user.password_hash) {
+      await updateUserPassword(user.id, await bcrypt.hash(password, 12));
+    } else {
+      await updateSupabaseAuthPassword(normalizedEmail, password);
+    }
+
     await recordLoginEvent(user, "password_reset_success");
     return res.json({ success: true });
   } catch (error) {
