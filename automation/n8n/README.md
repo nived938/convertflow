@@ -1,57 +1,64 @@
 # ConvertFlow Render backend control
 
-This folder contains the n8n workflow used by the `/admin` page to control the Render backend.
+This folder contains the n8n workflow used by the `/admin` pages to control the Render backend.
 
-Render provides official API endpoints to retrieve, suspend, and resume services. The workflow keeps the Render API key and admin password inside n8n instead of shipping them to Vercel.
+## Security architecture
+
+The admin password is entered only on the separate `/admin` login page. Node.js verifies the password and issues a short-lived signed admin session token. The controls page at `/admin/control` never receives or stores the password.
+
+The n8n workflow verifies that signed token before it can call the Render API. The Render API key stays only in n8n.
+
+This also means an authenticated controls page can still request **Turn Backend ON** after the ConvertFlow backend has been suspended, because n8n remains running separately.
 
 ## 1. Import the workflow
 
-Import `convertflow-render-control.json` into the n8n instance at `https://n8n-2-rgl6.onrender.com`.
+Import `convertflow-render-control.json` into the n8n instance at `https://n8n-2-rgl6.onrender.com` and activate it.
 
-Activate the workflow after importing it.
-
-The webhook path is:
+Webhook path:
 
 `/webhook/convertflow-render-control`
 
 ## 2. Add these n8n environment variables
 
-Configure these variables on the n8n Render service:
+Configure these variables on the **n8n Render service**:
 
 - `RENDER_API_KEY`, your Render API key
 - `RENDER_SERVICE_ID`, the service ID of `convertflow-backend`
-- `CONVERTFLOW_ADMIN_PASSWORD`, a long random password used only for the admin panel
+- `ADMIN_CONTROL_SECRET`, a long random secret. It must exactly match the backend's `ADMIN_CONTROL_SECRET`.
 
-Do not put any of these secrets in GitHub or Vercel.
+Do not put these secrets in GitHub or Vercel.
 
-## 3. Configure Vercel
+## 3. Add these backend Render environment variables
 
-Add this environment variable to the ConvertFlow frontend project:
+Configure these on the **convertflow-backend Render service**:
+
+- `ADMIN_PASSWORD`, your private admin password
+- `ADMIN_CONTROL_SECRET`, the exact same long random secret used in n8n
+
+Use a strong random value for `ADMIN_CONTROL_SECRET`. Never commit it to GitHub.
+
+## 4. Configure Vercel
+
+Keep this frontend environment variable:
 
 `VITE_ADMIN_CONTROL_WEBHOOK_URL=https://n8n-2-rgl6.onrender.com/webhook/convertflow-render-control`
 
-Redeploy the frontend after adding the variable.
+Redeploy the frontend after changing environment variables.
 
-## 4. Use the panel
+## 5. Use the panel
 
 Open:
 
 `https://convertflow-seven-delta.vercel.app/admin`
 
-Enter the same `CONVERTFLOW_ADMIN_PASSWORD` configured in n8n.
+Enter your `ADMIN_PASSWORD`. After successful login you are sent to:
 
-The panel supports:
+`/admin/control`
 
-- backend status
-- Turn Backend ON
-- Turn Backend OFF
-- manual status refresh
-- automatic status refresh every 15 seconds
+The controls page supports backend status, Turn Backend ON, Turn Backend OFF, manual refresh, automatic refresh, and sign out.
 
-The `/admin` route is intentionally outside the normal `BackendGuard`, so it remains accessible even when the Render backend has been suspended.
+## Important
 
-## Security notes
+The old `CONVERTFLOW_ADMIN_PASSWORD` n8n variable is no longer used by the updated workflow. Remove it after the new setup is working.
 
-The Render API uses Bearer API-key authentication. Never expose that key in frontend JavaScript, Vercel client environment variables, GitHub, or the browser. Only n8n should know the Render API key.
-
-The workflow checks the admin password before calling Render. Keep the n8n webhook URL private enough for your use case and use a strong admin password.
+The Render API key is never sent to Vercel or the browser.
