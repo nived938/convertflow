@@ -3,10 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href="https://convertflow.vercel.app/" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#120b24" />
-    <meta name="description" content="ConvertFlow, fast and simple online file conversion." />
-    <title>ConvertFlow, File Converter</title>
+    <meta name="description" content="ConvertFlow is a free online file converter for common image, video, and audio formats. Convert files without an account." />
+    <meta name="keywords" content="file converter, online converter, image converter, video converter, audio converter, free file converter" />
+    <meta name="robots" content="index,follow" />
+    <meta name="google-site-verification" content="%VITE_GOOGLE_SITE_VERIFICATION%" />
+    <meta property="og:title" content="ConvertFlow, Free Online File Converter" />
+    <meta property="og:description" content="Convert common image, video, and audio files online without an account." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://convertflow.vercel.app/" />
+    <title>ConvertFlow, Free Online File Converter</title>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      window.__GA_ID__ = "%VITE_GA_ID%";
+      if (window.__GA_ID__ && !window.__GA_ID__.startsWith("%")) {
+        const s = document.createElement("script"); s.async = true; s.src = "https://www.googletagmanager.com/gtag/js?id=" + window.__GA_ID__; document.head.appendChild(s);
+        gtag("js", new Date()); gtag("config", window.__GA_ID__);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
