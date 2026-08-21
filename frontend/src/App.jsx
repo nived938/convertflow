@@ -11,10 +11,12 @@ import Terms from "./pages/Terms";
 import ServicePage from "./pages/ServicePage";
 import LocationPage from "./pages/LocationPage";
 import BackendGuard from "./components/BackendGuard";
+import SeoManager from "./components/SeoManager";
 
 export default function App() {
   return (
     <BrowserRouter>
+      <SeoManager />
       <BackendGuard>
         <Routes>
           <Route path="/" element={<Home />} />
