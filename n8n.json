@@ -2,101 +2,45 @@
   "name": "ConvertFlow Backend Keep Alive + Failure Alert",
   "nodes": [
     {
-      "parameters": {
-        "rule": {
-          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
-        }
-      },
-      "id": "schedule",
-      "name": "Every 5 Minutes",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [-520, 0]
+      "parameters": {"rule":{"interval":[{"field":"minutes","minutesInterval":5}]}},
+      "id":"schedule","name":"Every 5 Minutes","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.2,"position":[-520,0]
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "https://convertflow-backend.onrender.com",
-        "sendHeaders": true,
-        "headerParameters": { "parameters": [{ "name": "User-Agent", "value": "ConvertFlow-n8n-KeepAlive/1.0" }] },
-        "options": { "timeout": 30000, "response": { "response": { "response": { "neverError": true, "fullResponse": true } } } }
+        "method":"GET","url":"https://convertflow-backend.onrender.com/api/health","sendHeaders":true,
+        "headerParameters":{"parameters":[{"name":"User-Agent","value":"ConvertFlow-n8n-KeepAlive/1.0"}]},
+        "options":{"timeout":30000,"response":{"response":{"neverError":true,"fullResponse":true}}}
       },
-      "id": "ping",
-      "name": "Call ConvertFlow Backend",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [-280, 0],
-      "onError": "continueRegularOutput"
+      "id":"ping","name":"Call ConvertFlow Backend","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[-280,0],"onError":"continueRegularOutput"
     },
     {
-      "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
-          "conditions": [{
-            "leftValue": "={{ $json.statusCode || 0 }}",
-            "rightValue": 400,
-            "operator": { "type": "number", "operation": "lt" }
-          }],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "online-check",
-      "name": "Backend Responded?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [-40, 0]
+      "parameters":{"conditions":{"options":{"caseSensitive":true,"typeValidation":"loose","version":2},"conditions":[{"leftValue":"={{ $json.statusCode || 0 }}","rightValue":200,"operator":{"type":"number","operation":"equals"}}],"combinator":"and"},"options":{}},
+      "id":"online-check","name":"Backend Online?","type":"n8n-nodes-base.if","typeVersion":2.2,"position":[-40,0]
     },
     {
-      "parameters": {
-        "assignments": { "assignments": [{ "name": "status", "value": "online", "type": "string" }, { "name": "checkedAt", "value": "={{ $now.toISO() }}", "type": "string" }] },
-        "options": {}
-      },
-      "id": "online",
-      "name": "Backend Online",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [220, -120]
+      "parameters":{"assignments":{"assignments":[{"name":"status","value":"online","type":"string"},{"name":"checkedAt","value":"={{ $now.toISO() }}","type":"string"}]},"options":{}},
+      "id":"online","name":"Backend Online","type":"n8n-nodes-base.set","typeVersion":3.4,"position":[220,-120]
     },
     {
-      "parameters": {
-        "assignments": { "assignments": [{ "name": "status", "value": "offline", "type": "string" }, { "name": "checkedAt", "value": "={{ $now.toISO() }}", "type": "string" }, { "name": "errorDetails", "value": "={{ JSON.stringify($json) }}", "type": "string" }] },
-        "options": {}
-      },
-      "id": "failure-data",
-      "name": "Prepare Failure Alert",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [220, 120]
+      "parameters":{"assignments":{"assignments":[{"name":"status","value":"offline","type":"string"},{"name":"checkedAt","value":"={{ $now.toISO() }}","type":"string"},{"name":"errorDetails","value":"={{ JSON.stringify($json) }}","type":"string"}]},"options":{}},
+      "id":"failure-data","name":"Prepare Failure Alert","type":"n8n-nodes-base.set","typeVersion":3.4,"position":[220,120]
     },
     {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.resend.com/emails",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ { from: 'ConvertFlow Monitor <YOUR_VERIFIED_RESEND_EMAIL>', to: ['nivedsreejaharidasan@gmail.com'], subject: 'ConvertFlow backend is offline', html: '<h2>ConvertFlow backend health alert</h2><p>The n8n monitor could not get a successful response from <strong>https://convertflow-backend.onrender.com</strong>.</p><p><strong>Time:</strong> ' + $json.checkedAt + '</p><p><strong>Details:</strong></p><pre>' + $json.errorDetails + '</pre><p>Check Render and the backend logs.</p>' } }}",
-        "options": { "timeout": 30000 }
+      "parameters":{
+        "method":"POST","url":"https://api.resend.com/emails","authentication":"predefinedCredentialType","nodeCredentialType":"httpHeaderAuth","sendHeaders":true,
+        "headerParameters":{"parameters":[{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json",
+        "jsonBody":"={{ { from: 'ConvertFlow Monitor <YOUR_VERIFIED_RESEND_EMAIL>', to: ['nivedsreejaharidasan@gmail.com'], subject: 'ConvertFlow backend is offline', html: '<h2>ConvertFlow backend health alert</h2><p>n8n could not get a healthy response from <strong>https://convertflow-backend.onrender.com/api/health</strong>.</p><p><strong>Time:</strong> ' + $json.checkedAt + '</p><p><strong>Details:</strong></p><pre>' + $json.errorDetails + '</pre><p>Check Render and the backend logs.</p>' } }}",
+        "options":{"timeout":30000}
       },
-      "id": "resend-alert",
-      "name": "Email Administrator with Resend",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [500, 120],
-      "credentials": { "httpHeaderAuth": { "id": "REPLACE_WITH_RESEND_HTTP_HEADER_CREDENTIAL_ID", "name": "ConvertFlow Resend API" } }
+      "id":"resend-alert","name":"Email Administrator with Resend","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[500,120],
+      "credentials":{"httpHeaderAuth":{"id":"REPLACE_WITH_RESEND_HTTP_HEADER_CREDENTIAL_ID","name":"ConvertFlow Resend API"}}
     }
   ],
-  "connections": {
-    "Every 5 Minutes": { "main": [[{ "node": "Call ConvertFlow Backend", "type": "main", "index": 0 }]] },
-    "Call ConvertFlow Backend": { "main": [[{ "node": "Backend Responded?", "type": "main", "index": 0 }]] },
-    "Backend Responded?": { "main": [[{ "node": "Backend Online", "type": "main", "index": 0 }], [{ "node": "Prepare Failure Alert", "type": "main", "index": 0 }]] },
-    "Prepare Failure Alert": { "main": [[{ "node": "Email Administrator with Resend", "type": "main", "index": 0 }]] }
+  "connections":{
+    "Every 5 Minutes":{"main":[[{"node":"Call ConvertFlow Backend","type":"main","index":0}]]},
+    "Call ConvertFlow Backend":{"main":[[{"node":"Backend Online?","type":"main","index":0}]]},
+    "Backend Online?":{"main":[[{"node":"Backend Online","type":"main","index":0}],[{"node":"Prepare Failure Alert","type":"main","index":0}]]},
+    "Prepare Failure Alert":{"main":[[{"node":"Email Administrator with Resend","type":"main","index":0}]]}
   },
-  "active": false,
-  "settings": { "executionOrder": "v1" },
-  "versionId": "3"
+  "active":false,"settings":{"executionOrder":"v1"},"versionId":"4"
 }
