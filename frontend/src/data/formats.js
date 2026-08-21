@@ -1,126 +1,22 @@
 export const formats = {
   image: [
-    {
-      id: "jpg",
-      name: "JPG",
-      extensions: ["jpg", "jpeg"],
-    },
-    {
-      id: "png",
-      name: "PNG",
-      extensions: ["png"],
-    },
-    {
-      id: "webp",
-      name: "WEBP",
-      extensions: ["webp"],
-    },
-    {
-      id: "gif",
-      name: "GIF",
-      extensions: ["gif"],
-    },
-    {
-      id: "bmp",
-      name: "BMP",
-      extensions: ["bmp"],
-    },
-    {
-      id: "tiff",
-      name: "TIFF",
-      extensions: ["tiff", "tif"],
-    },
-  ],
-
+    ["jpg","JPG",["jpg","jpeg"]],["png","PNG",["png"]],["webp","WEBP",["webp"]],["gif","GIF",["gif"]],["bmp","BMP",["bmp"]],["tiff","TIFF",["tiff","tif"]],["avif","AVIF",["avif"]],["ico","ICO",["ico"]],["heic","HEIC",["heic","heif"]],["jp2","JPEG 2000",["jp2","j2k"]],["ppm","PPM",["ppm"]],["tga","TGA",["tga"]]
+  ].map(([id,name,extensions])=>({id,name,extensions})),
   video: [
-    {
-      id: "mp4",
-      name: "MP4",
-      extensions: ["mp4"],
-    },
-    {
-      id: "webm",
-      name: "WEBM",
-      extensions: ["webm"],
-    },
-    {
-      id: "avi",
-      name: "AVI",
-      extensions: ["avi"],
-    },
-    {
-      id: "mkv",
-      name: "MKV",
-      extensions: ["mkv"],
-    },
-    {
-      id: "mov",
-      name: "MOV",
-      extensions: ["mov"],
-    },
-  ],
-
+    ["mp4","MP4",["mp4"]],["webm","WEBM",["webm"]],["avi","AVI",["avi"]],["mkv","MKV",["mkv"]],["mov","MOV",["mov"]],["flv","FLV",["flv"]],["mpeg","MPEG",["mpeg","mpg"]],["m4v","M4V",["m4v"]],["ts","MPEG-TS",["ts","mts","m2ts"]],["3gp","3GP",["3gp","3g2"]],["ogv","OGV",["ogv"]],["vob","VOB",["vob"]],["wmv","WMV",["wmv"]]
+  ].map(([id,name,extensions])=>({id,name,extensions})),
   audio: [
-    {
-      id: "mp3",
-      name: "MP3",
-      extensions: ["mp3"],
-    },
-    {
-      id: "wav",
-      name: "WAV",
-      extensions: ["wav"],
-    },
-    {
-      id: "aac",
-      name: "AAC",
-      extensions: ["aac"],
-    },
-    {
-      id: "ogg",
-      name: "OGG",
-      extensions: ["ogg"],
-    },
-    {
-      id: "flac",
-      name: "FLAC",
-      extensions: ["flac"],
-    },
-    {
-      id: "m4a",
-      name: "M4A",
-      extensions: ["m4a"],
-    },
-  ],
+    ["mp3","MP3",["mp3"]],["wav","WAV",["wav"]],["aac","AAC",["aac"]],["ogg","OGG",["ogg","oga"]],["flac","FLAC",["flac"]],["m4a","M4A",["m4a"]],["opus","OPUS",["opus"]],["aiff","AIFF",["aiff","aif"]],["ac3","AC3",["ac3"]],["amr","AMR",["amr"]],["wma","WMA",["wma"]],["mka","MKA",["mka"]]
+  ].map(([id,name,extensions])=>({id,name,extensions}))
 };
 
 export function detectFormat(filename) {
-  const extension = filename
-    .split(".")
-    .pop()
-    .toLowerCase();
-
-  for (const [category, categoryFormats] of Object.entries(
-    formats
-  )) {
-    const match = categoryFormats.find(
-      (format) =>
-        format.extensions.includes(extension)
-    );
-
-    if (match) {
-      return {
-        ...match,
-        category,
-      };
-    }
+  const extension = filename.split(".").pop().toLowerCase();
+  for (const [category, categoryFormats] of Object.entries(formats)) {
+    const match = categoryFormats.find(format => format.extensions.includes(extension));
+    if (match) return { ...match, category };
   }
-
   return null;
 }
 
-export function getFormatsForCategory(
-  category
-) {
-  return formats[category] || [];
-}
+export function getFormatsForCategory(category) { return formats[category] || []; }
