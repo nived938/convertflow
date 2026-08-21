@@ -12,26 +12,36 @@ import ServicePage from "./pages/ServicePage";
 import LocationPage from "./pages/LocationPage";
 import BackendGuard from "./components/BackendGuard";
 import SeoManager from "./components/SeoManager";
+import AdminControl from "./pages/AdminControl";
+
+function PublicRoutes() {
+  return (
+    <BackendGuard>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/convert" element={<ConversionPage />} />
+        <Route path="/donate" element={<Donate />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/faq" element={<FAQ />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/services/:type" element={<ServicePage />} />
+        <Route path="/locations/:location" element={<LocationPage />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </BackendGuard>
+  );
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <SeoManager />
-      <BackendGuard>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/convert" element={<ConversionPage />} />
-          <Route path="/donate" element={<Donate />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/faq" element={<FAQ />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/privacy" element={<Privacy />} />
-          <Route path="/terms" element={<Terms />} />
-          <Route path="/services/:type" element={<ServicePage />} />
-          <Route path="/locations/:location" element={<LocationPage />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BackendGuard>
+      <Routes>
+        <Route path="/admin" element={<AdminControl />} />
+        <Route path="*" element={<PublicRoutes />} />
+      </Routes>
     </BrowserRouter>
   );
 }

@@ -1,0 +1,63 @@
+{
+  "name": "ConvertFlow Render Backend Control",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "convertflow-render-control",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0a5f7c0e-8e1f-4a8c-9b30-2b4c2f5e8a11",
+      "name": "Render Control Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "webhookId": "convertflow-render-control"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst action = String(body.action || '').toLowerCase();\nconst password = String(body.password || '');\nconst expectedPassword = String($env.CONVERTFLOW_ADMIN_PASSWORD || '');\nconst serviceId = String($env.RENDER_SERVICE_ID || '');\nconst apiKey = String($env.RENDER_API_KEY || '');\n\nif (!expectedPassword || !serviceId || !apiKey) {\n  return [{ json: { success: false, message: 'Render control is not configured in n8n.' } }];\n}\n\nif (password !== expectedPassword) {\n  return [{ json: { success: false, message: 'Invalid admin password.' } }];\n}\n\nif (!['status', 'on', 'off'].includes(action)) {\n  return [{ json: { success: false, message: 'Invalid action.' } }];\n}\n\nconst base = `https://api.render.com/v1/services/${serviceId}`;\nlet method = 'GET';\nlet url = base;\nif (action === 'on') { method = 'POST'; url = `${base}/resume`; }\nif (action === 'off') { method = 'POST'; url = `${base}/suspend`; }\n\ntry {\n  const response = await this.helpers.httpRequest({\n    method,\n    url,\n    headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },\n    returnFullResponse: true,\n  });\n\n  let data = response.body;\n  if (typeof data === 'string' && data.trim()) {\n    try { data = JSON.parse(data); } catch {}\n  }\n\n  let status = 'unknown';\n  if (action === 'off') status = 'suspended';\n  else if (action === 'on') status = 'resuming';\n  else status = data?.suspended === 'suspended' ? 'suspended' : 'running';\n\n  return [{ json: { success: true, action, status, message: action === 'status' ? `Backend is ${status}.` : `Render ${action === 'on' ? 'resume' : 'suspend'} request accepted.`, renderStatusCode: response.statusCode } }];\n} catch (error) {\n  const statusCode = error.statusCode || error.response?.status || 502;\n  return [{ json: { success: false, message: `Render API request failed with HTTP ${statusCode}.`, renderStatusCode: statusCode } }];\n}"
+      },
+      "id": "9e6d4a2c-8c0d-44b8-a4e1-0a3e5e7d9b21",
+      "name": "Validate and Control Render",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "https://convertflow-seven-delta.vercel.app" },
+              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" },
+              { "name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" }
+            ]
+          }
+        }
+      },
+      "id": "4d1e8b7a-3c5f-4f9a-b2d6-7e0c1a5f8b33",
+      "name": "Return Control Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [540, 0]
+    }
+  ],
+  "connections": {
+    "Render Control Webhook": {
+      "main": [[{ "node": "Validate and Control Render", "type": "main", "index": 0 }]]
+    },
+    "Validate and Control Render": {
+      "main": [[{ "node": "Return Control Result", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "1",
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {},
+  "tags": []
+}
