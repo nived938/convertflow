@@ -2,17 +2,7 @@ import { useEffect, useState } from "react";
 import { API_BASE_URL } from "../services/api";
 
 function MaintenanceScreen() {
-  return (
-    <main className="maintenance-screen">
-      <div className="maintenance-card">
-        <div className="maintenance-icon" aria-hidden="true">⚙️</div>
-        <p className="section-label">TEMPORARILY UNAVAILABLE</p>
-        <h1>ConvertFlow is under maintenance</h1>
-        <p>Our conversion server is not responding right now. Please wait a moment and try again.</p>
-        <button className="auth-submit" onClick={() => window.location.reload()}>Try again</button>
-      </div>
-    </main>
-  );
+  return <main className="maintenance-screen"><div className="maintenance-card"><div className="maintenance-icon" aria-hidden="true">⚙️</div><p className="section-label">BACKEND ACCESS DISABLED</p><h1>ConvertFlow is temporarily unavailable</h1><p>The administrator has disabled frontend access to the conversion server. Please try again later.</p><button className="auth-submit" onClick={() => window.location.reload()}>Check again</button></div></main>;
 }
 
 export default function BackendGuard({ children }) {
@@ -20,29 +10,24 @@ export default function BackendGuard({ children }) {
   const [maintenance, setMaintenance] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    let timer;
-    const started = Date.now();
-
+    let cancelled = false; let timer;
     async function check() {
       try {
-        // API_BASE_URL already includes the /api prefix in production.
+        const control = await fetch("/api/site-mode", { cache: "no-store" });
+        const state = await control.json().catch(() => ({}));
+        if (state.success && state.backendEnabled === false) {
+          if (!cancelled) { setMaintenance(true); setReady(false); }
+          timer = setTimeout(check, 5000); return;
+        }
         const response = await fetch(`${API_BASE_URL}/health`, { cache: "no-store" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        if (!cancelled) {
-          setReady(true);
-          setMaintenance(false);
-        }
-      } catch (error) {
-        if (Date.now() - started >= 30000 && !cancelled) {
-          setMaintenance(true);
-          setReady(false);
-        }
+        if (!cancelled) { setReady(true); setMaintenance(false); }
+      } catch {
+        if (!cancelled) { setMaintenance(false); setReady(false); }
       } finally {
-        if (!cancelled) timer = setTimeout(check, 5000);
+        if (!cancelled && !timer) timer = setTimeout(check, 5000);
       }
     }
-
     check();
     return () => { cancelled = true; clearTimeout(timer); };
   }, []);
