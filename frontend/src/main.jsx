@@ -5,4 +5,5 @@ import "./index.css";
 import "./seo.css";
 import "./button-width-fix.css";
 import "./growth.css";
+import "./enhancements.css";
 ReactDOM.createRoot(document.getElementById("root")).render(<React.StrictMode><App/></React.StrictMode>);
