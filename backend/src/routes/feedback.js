@@ -1,0 +1,5 @@
+import express from "express";
+const router=express.Router();
+function cfg(){return {url:String(process.env.SUPABASE_URL||"").replace(/\/$/,""),key:String(process.env.SUPABASE_SERVICE_ROLE_KEY||"")}}
+router.post("/",async(req,res)=>{const rating=Number(req.body?.rating);const message=String(req.body?.message||"").trim().slice(0,2000);const page=String(req.body?.page||"").slice(0,300);if(!Number.isInteger(rating)||rating<1||rating>5||!message)return res.status(400).json({success:false,message:"Please choose a rating and write feedback."});const{url,key}=cfg();if(!url||!key)return res.status(503).json({success:false,message:"Feedback service is not configured."});try{const r=await fetch(`${url}/rest/v1/convertflow_feedback`,{method:"POST",headers:{apikey:key,Authorization:`Bearer ${key}`,"Content-Type":"application/json"},body:JSON.stringify({rating,message,page})});if(!r.ok)return res.status(502).json({success:false,message:"Could not save feedback."});return res.json({success:true});}catch(e){return res.status(502).json({success:false,message:e.message})}});
+export default router;
