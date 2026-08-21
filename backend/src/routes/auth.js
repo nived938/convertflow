@@ -34,6 +34,7 @@ function setSessionCookie(res, user) {
     secure: process.env.NODE_ENV === "production",
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
+  return token;
 }
 function verificationUnavailable(res) {
   return res.status(503).json({ success: false, message: "Email verification is not configured yet. Please try again later." });
@@ -80,15 +81,12 @@ async function findSupabaseAuthUser(email) {
 
 async function updateSupabaseAuthPassword(email, password) {
   const authUser = await findSupabaseAuthUser(email);
-  if (!authUser?.id) return false;
+  if (!authUser?.id) throw new Error("Supabase Auth user was not found.");
   const { response, data } = await supabaseAuthRequest(`/admin/users/${authUser.id}`, {
     method: "PUT",
     body: JSON.stringify({ password, email_confirm: true }),
   });
-  if (!response.ok) {
-    throw new Error(`Supabase Auth password update failed (${response.status}): ${data?.message || data?.msg || "unknown error"}`);
-  }
-  return true;
+  if (!response.ok) throw new Error(`Supabase Auth password update failed (${response.status}): ${data?.message || data?.msg || "unknown error"}`);
 }
 
 async function sendEmailCode(user, type) {
@@ -142,21 +140,19 @@ router.post("/login", async (req, res) => {
     if (!normalizedEmail || !password) return res.status(400).json({ success: false, message: "Email and password are required." });
 
     let user = await findUserByEmail(normalizedEmail);
+    let syncedSupabaseAuthUser = false;
 
     if (!user || !user.password_hash) {
       const authUser = await signInWithSupabase(normalizedEmail, password);
-      if (!authUser) {
-        return res.status(401).json({ success: false, message: "Invalid email or password." });
-      }
-
+      if (!authUser) return res.status(401).json({ success: false, message: "Invalid email or password." });
       if (!user) {
         user = await createUser(normalizedEmail, null);
+        syncedSupabaseAuthUser = true;
       }
     } else {
       let passwordMatches = false;
-      try {
-        passwordMatches = await bcrypt.compare(password, user.password_hash);
-      } catch (error) {
+      try { passwordMatches = await bcrypt.compare(password, user.password_hash); }
+      catch (error) {
         console.error("Password comparison error:", error);
         return res.status(503).json({ success: false, message: "The account password data is unavailable. Please create the account again." });
       }
@@ -167,12 +163,11 @@ router.post("/login", async (req, res) => {
 
     try {
       await createVerification(user, "login_code");
-      await recordLoginEvent(user, "login_verification_requested");
+      if (!syncedSupabaseAuthUser) await recordLoginEvent(user, "login_verification_requested");
     } catch (error) {
       console.error("Login verification email error:", error);
       return res.status(503).json({ success: false, message: "We could not send your verification code. Please check the n8n email workflow." });
     }
-
     return res.json({ success: true, requiresVerification: true, email: user.email });
   } catch (error) {
     console.error("Login error:", error);
@@ -205,9 +200,9 @@ router.post("/verify-login", async (req, res) => {
     const code = String(req.body?.code || "").trim();
     if (!user || !/^\d{6}$/.test(code)) return res.status(400).json({ success: false, message: "Enter the six-digit code from your email." });
     await verifyCode(user, "login_code", code);
-    setSessionCookie(res, user);
-    await recordLoginEvent(user, "login_success");
-    return res.json({ success: true, user: { id: user.id, email: user.email } });
+    const token = setSessionCookie(res, user);
+    try { await recordLoginEvent(user, "login_success"); } catch (eventError) { console.error("Login event recording failed:", eventError); }
+    return res.json({ success: true, token, user: { id: user.id, email: user.email } });
   } catch (error) {
     console.error("Login verification error:", error);
     return res.status(401).json({ success: false, message: error.message || "Could not verify your code." });
@@ -217,19 +212,25 @@ router.post("/verify-login", async (req, res) => {
 router.post("/request-password-reset", async (req, res) => {
   try {
     const normalizedEmail = normalizeEmail(req.body?.email);
-    const user = await findUserByEmail(normalizedEmail);
+    if (!normalizedEmail) return res.status(400).json({ success: false, message: "Email is required." });
+    if (!configReady()) return verificationUnavailable(res);
+
+    let user = await findUserByEmail(normalizedEmail);
+    let syncedSupabaseAuthUser = false;
+
     if (!user) {
       const authUser = await findSupabaseAuthUser(normalizedEmail);
-      if (!authUser) return res.json({ success: true });
-      const syncUser = await createUser(normalizedEmail, null);
-      await createVerification(syncUser, "password_reset");
-      await recordLoginEvent(syncUser, "password_reset_requested");
-      return res.json({ success: true });
+      if (!authUser) return res.json({ success: true, message: "If an account exists for this email, a reset code has been sent." });
+      user = await createUser(normalizedEmail, null);
+      syncedSupabaseAuthUser = true;
     }
-    if (!configReady()) return verificationUnavailable(res);
+
     await createVerification(user, "password_reset");
-    await recordLoginEvent(user, "password_reset_requested");
-    return res.json({ success: true });
+    if (!syncedSupabaseAuthUser) {
+      try { await recordLoginEvent(user, "password_reset_requested"); }
+      catch (eventError) { console.error("Password reset event recording failed:", eventError); }
+    }
+    return res.json({ success: true, message: "If an account exists for this email, a reset code has been sent." });
   } catch (error) {
     console.error("Password reset request error:", error);
     return res.status(503).json({ success: false, message: "We could not send your reset code. Please check the n8n email workflow." });
@@ -245,13 +246,11 @@ router.post("/reset-password", async (req, res) => {
     if (!user || !/^\d{6}$/.test(code) || !password || password.length < 8) return res.status(400).json({ success: false, message: "Enter a valid code and a password with at least 8 characters." });
     await verifyCode(user, "password_reset", code);
 
-    if (user.password_hash) {
-      await updateUserPassword(user.id, await bcrypt.hash(password, 12));
-    } else {
-      await updateSupabaseAuthPassword(normalizedEmail, password);
-    }
+    if (user.password_hash) await updateUserPassword(user.id, await bcrypt.hash(password, 12));
+    else await updateSupabaseAuthPassword(normalizedEmail, password);
 
-    await recordLoginEvent(user, "password_reset_success");
+    try { await recordLoginEvent(user, "password_reset_success"); }
+    catch (eventError) { console.error("Password reset event recording failed:", eventError); }
     return res.json({ success: true });
   } catch (error) {
     console.error("Password reset error:", error);
