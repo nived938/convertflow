@@ -9,8 +9,12 @@ const plans = [
 
 function buy(plan) {
   const subject = `Buying API of ConvertFlow for ${plan.label}`;
-  const body = `Hello Nived,\n\nI would like to buy the ConvertFlow API for ${plan.label}.\n\nPlease send me the payment instructions and the API access details after payment.\n\nThank you.`;
-  window.location.href = `mailto:nivedsreejaharidasan@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const body = `Hello Nived,\n\nI would like to buy the ConvertFlow API for ${plan.label}.\n\nPlease send me the payment instructions and API access details.\n\nThank you.`;
+  const params = new URLSearchParams({ to: "nivedsreejaharidasan@gmail.com", su: subject, body });
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&${params.toString()}`;
+  const mailtoUrl = `mailto:nivedsreejaharidasan@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const popup = window.open(gmailUrl, "_blank", "noopener,noreferrer");
+  if (!popup) window.location.href = mailtoUrl;
 }
 
 export default function Api() {
