@@ -1,0 +1,16 @@
+/* Keep action buttons sized to their content instead of stretching across their container. */
+.auth-submit,
+.feedback-button,
+.start-converting,
+a[class*="convert"],
+button[class*="convert"] {
+  width: fit-content !important;
+  max-width: 100%;
+  flex: 0 0 auto !important;
+}
+
+/* Preserve normal full-width controls inside the converter itself. */
+.converter-card .auth-submit,
+.converter-card .feedback-button {
+  width: fit-content !important;
+}
