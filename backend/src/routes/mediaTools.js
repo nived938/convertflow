@@ -1,0 +1,83 @@
+import express from "express";
+import multer from "multer";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { optionalApiKey } from "../middleware/optionalApiKey.js";
+
+const router = express.Router();
+const execFileAsync = promisify(execFile);
+const tempDirectory = path.resolve("temp");
+if (!fs.existsSync(tempDirectory)) fs.mkdirSync(tempDirectory, { recursive: true });
+const storage = multer.diskStorage({ destination: tempDirectory, filename: (req, file, cb) => cb(null, `${crypto.randomUUID()}${path.extname(file.originalname)}`) });
+const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
+function cleanup(...files) { files.flat().forEach(file => { if (file && fs.existsSync(file)) { try { fs.unlinkSync(file); } catch {} } }); }
+function safeName(name) { return String(name || "download").replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/\.\.+/g, "_").slice(0, 180) || "download"; }
+async function sendFile(res, input, output, downloadName) { if (!fs.existsSync(output)) throw new Error("The processing tool did not create an output file."); res.download(output, safeName(downloadName), error => { cleanup(input, output); if (error) console.error("Media tool download error:", error); }); }
+
+router.post("/image-crop", optionalApiKey, upload.single("file"), async (req, res) => {
+  let output;
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "No image was uploaded." });
+    const width = Math.max(1, Math.min(10000, Number(req.body.width) || 0));
+    const height = Math.max(1, Math.min(10000, Number(req.body.height) || 0));
+    const x = Math.max(0, Number(req.body.x) || 0); const y = Math.max(0, Number(req.body.y) || 0);
+    if (!width || !height) throw new Error("Crop width and height are required.");
+    output = path.join(tempDirectory, `${crypto.randomUUID()}-cropped.png`);
+    await execFileAsync("magick", [req.file.path, "-crop", `${width}x${height}+${x}+${y}`, "+repage", output]);
+    return sendFile(res, req.file.path, output, `${path.parse(req.file.originalname).name}-cropped.png`);
+  } catch (e) { cleanup(req.file?.path, output); return res.status(500).json({ success: false, message: e.message || "Image crop failed." }); }
+});
+
+router.post("/video-compress", optionalApiKey, upload.single("file"), async (req, res) => {
+  let output;
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "No video was uploaded." });
+    const quality = String(req.body.quality || "medium");
+    const crf = quality === "low" ? "32" : quality === "high" ? "23" : "28";
+    const scale = String(req.body.resolution || "original");
+    output = path.join(tempDirectory, `${crypto.randomUUID()}-compressed.mp4`);
+    const args = ["-i", req.file.path, "-c:v", "libx264", "-crf", crf, "-preset", "medium", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"];
+    if (["1080p", "720p", "480p"].includes(scale)) args.push("-vf", `scale=-2:${scale.replace("p", "")}`);
+    args.push("-y", output);
+    await execFileAsync("ffmpeg", args, { timeout: 240000 });
+    return sendFile(res, req.file.path, output, `${path.parse(req.file.originalname).name}-compressed.mp4`);
+  } catch (e) { cleanup(req.file?.path, output); return res.status(500).json({ success: false, message: e.message || "Video compression failed." }); }
+});
+
+router.post("/video-thumbnail", optionalApiKey, upload.single("file"), async (req, res) => {
+  let output;
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "No video was uploaded." });
+    const seconds = Math.max(0, Number(req.body.time) || 1);
+    output = path.join(tempDirectory, `${crypto.randomUUID()}-thumbnail.jpg`);
+    await execFileAsync("ffmpeg", ["-ss", String(seconds), "-i", req.file.path, "-frames:v", "1", "-q:v", "2", "-y", output], { timeout: 120000 });
+    return sendFile(res, req.file.path, output, `${path.parse(req.file.originalname).name}-thumbnail.jpg`);
+  } catch (e) { cleanup(req.file?.path, output); return res.status(500).json({ success: false, message: e.message || "Thumbnail extraction failed." }); }
+});
+
+router.post("/gif", optionalApiKey, upload.single("file"), async (req, res) => {
+  let output;
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "No video was uploaded." });
+    const fps = Math.max(1, Math.min(30, Number(req.body.fps) || 12));
+    output = path.join(tempDirectory, `${crypto.randomUUID()}.gif`);
+    await execFileAsync("ffmpeg", ["-i", req.file.path, "-vf", `fps=${fps},scale=720:-1:flags=lanczos`, "-loop", "0", "-y", output], { timeout: 240000 });
+    return sendFile(res, req.file.path, output, `${path.parse(req.file.originalname).name}.gif`);
+  } catch (e) { cleanup(req.file?.path, output); return res.status(500).json({ success: false, message: e.message || "GIF creation failed." }); }
+});
+
+router.post("/archive/zip", optionalApiKey, upload.array("files", 20), async (req, res) => {
+  let output;
+  try {
+    if (!req.files?.length) return res.status(400).json({ success: false, message: "Upload at least one file." });
+    output = path.join(tempDirectory, `${crypto.randomUUID()}.zip`);
+    const args = ["-q", output, ...req.files.map(f => f.path)];
+    await execFileAsync("zip", args, { timeout: 120000 });
+    return sendFile(res, req.files.map(f => f.path), output, "convertflow-files.zip");
+  } catch (e) { cleanup(req.files?.map(f => f.path), output); return res.status(500).json({ success: false, message: e.message || "ZIP creation failed." }); }
+});
+
+export default router;
