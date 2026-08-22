@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express from "express"; import cors from "cors"; import cookieParser from "cookie-parser";
-import authRoutes from "./routes/auth.js"; import conversionRoutes from "./routes/conversion.js"; import jobsRoutes from "./routes/jobs.js"; import adminRoutes from "./routes/admin.js"; import analyticsRoutes from "./routes/analytics.js"; import feedbackRoutes from "./routes/feedback.js"; import apiVaultRoutes from "./routes/apiVault.js"; import mediaToolsRoutes from "./routes/mediaTools.js"; import imageUpscaleRoutes from "./routes/imageUpscale.js";
+import authRoutes from "./routes/auth.js"; import conversionRoutes from "./routes/conversion.js"; import jobsRoutes from "./routes/jobs.js"; import adminRoutes from "./routes/admin.js"; import analyticsRoutes from "./routes/analytics.js"; import feedbackRoutes from "./routes/feedback.js"; import apiVaultRoutes from "./routes/apiVault.js"; import mediaToolsRoutes from "./routes/mediaTools.js"; import imageUpscaleRoutes from "./routes/fastImageUpscale.js";
 import { startTempCleanup } from "./workers/tempCleanup.js"; import { publicConversionRateLimit } from "./middleware/rateLimit.js";
 const PORT=process.env.PORT||5000;
 const configuredOrigins=[process.env.FRONTEND_URL,process.env.API_TESTER_URL||"https://convertflow-api-tester.vercel.app"].filter(Boolean).flatMap(value=>String(value).split(",")).map(o=>o.trim().replace(/\/$/,"")).filter(Boolean);
