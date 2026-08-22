@@ -10,8 +10,16 @@ create table if not exists public.convertflow_api_keys (
   expires_at timestamptz null,
   created_at timestamptz not null default now(),
   last_used_at timestamptz null,
-  revoked_at timestamptz null
+  revoked_at timestamptz null,
+  usage_count integer not null default 0,
+  usage_limit integer not null default 50000,
+  usage_reset_at timestamptz null
 );
+
+-- Keep existing databases compatible when this file is re-run after an older schema.
+alter table public.convertflow_api_keys add column if not exists usage_count integer not null default 0;
+alter table public.convertflow_api_keys add column if not exists usage_limit integer not null default 50000;
+alter table public.convertflow_api_keys add column if not exists usage_reset_at timestamptz null;
 
 create index if not exists convertflow_api_keys_hash_idx on public.convertflow_api_keys(key_hash);
 create index if not exists convertflow_api_keys_expires_idx on public.convertflow_api_keys(expires_at);
