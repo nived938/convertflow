@@ -1,5 +1,6 @@
 import crypto from "crypto";
 const planLimits = { month: 1000, year: 15000, permanent: 50000 };
+const apiBurstBuckets = new Map();
 async function sb(url,key,path,options={}){return fetch(`${url}${path}`,{...options,headers:{apikey:key,Authorization:`Bearer ${key}`,...(options.headers||{})}})}
 export async function optionalApiKey(req,res,next){
   const apiKey=String(req.headers["x-convertflow-api-key"]||req.headers["x-api-key"]||"").trim(); if(!apiKey)return next();
@@ -11,6 +12,7 @@ export async function optionalApiKey(req,res,next){
     const rows=await response.json().catch(()=>[]); if(!response.ok||!rows[0])return res.status(401).json({success:false,message:"Invalid or revoked ConvertFlow API key."});
     const license=rows[0];
     if(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now()){await sb(url,serviceKey,`/rest/v1/convertflow_api_keys?id=eq.${license.id}`,{method:"DELETE"}).catch(()=>{});return res.status(403).json({success:false,message:"This ConvertFlow API key has expired."});}
+    const burstKey=license.id; const now=Date.now(); let bucket=apiBurstBuckets.get(burstKey); if(!bucket||now-bucket.started>=60000)bucket={started:now,count:0}; bucket.count++; apiBurstBuckets.set(burstKey,bucket); if(bucket.count>60){res.set("Retry-After",String(Math.ceil((bucket.started+60000-now)/1000)));return res.status(429).json({success:false,message:"API rate limit reached. Maximum 60 requests per minute."});}
     let usage=Number(license.usage_count||0); let resetAt=license.usage_reset_at?new Date(license.usage_reset_at):null;
     if(resetAt&&resetAt.getTime()<=Date.now()&&license.plan!=="permanent"){usage=0;resetAt=new Date();if(license.plan==="month")resetAt.setMonth(resetAt.getMonth()+1);else resetAt.setFullYear(resetAt.getFullYear()+1);}
     const limit=Number(license.usage_limit||planLimits[license.plan]||1000); if(usage>=limit)return res.status(429).json({success:false,message:`API usage limit reached (${limit} conversions).`});
