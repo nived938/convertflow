@@ -1,24 +1,208 @@
-import {useRef,useState} from "react";import {Archive,ArrowRight,CheckCircle2,Film,Gauge,Image as ImageIcon,Layers3,Sparkles,Upload,WandSparkles,X,Scissors,Stamp,Maximize2,AudioWaveform,VolumeX,Play,Expand} from "lucide-react";import Header from "../components/Header";import Footer from "../components/Footer";import "./tools.css";
-const API=(import.meta.env.VITE_API_URL||"https://convertflow-backend.onrender.com/api").replace(/\/$/,"");
-const TOOLS=[
-{id:"crop",title:"Smart Image Crop",desc:"Crop images with precise dimensions and positioning.",icon:ImageIcon,tag:"IMAGE"},
-{id:"bg",title:"Background Remover",desc:"Remove simple image backgrounds and export transparent PNG.",icon:Scissors,tag:"IMAGE"},
-{id:"watermark",title:"Watermark Studio",desc:"Add a clean text watermark to your images.",icon:Stamp,tag:"IMAGE"},
-{id:"enhance",title:"Image Enhancer",desc:"Improve levels and sharpness for a cleaner image.",icon:Sparkles,tag:"IMAGE"},
-{id:"upscale",title:"Image Upscaler",desc:"Upscale images to 2K, 4K or 8K with high quality Lanczos resampling.",icon:Expand,tag:"AI STYLE"},
-{id:"compress",title:"Video Compressor",desc:"Shrink MP4 videos while keeping a strong balance of quality and size.",icon:Gauge,tag:"VIDEO"},
-{id:"resolution",title:"Video Resolution",desc:"Convert video to 480p, 720p, 1080p, 1440p or 4K.",icon:Maximize2,tag:"VIDEO"},
-{id:"fps",title:"Frame Rate Converter",desc:"Convert video frame rate from 1 to 120 FPS.",icon:Film,tag:"VIDEO"},
-{id:"mute",title:"Remove Video Audio",desc:"Create a clean silent copy of your video.",icon:VolumeX,tag:"VIDEO"},
-{id:"speed",title:"Video Speed",desc:"Slow down or speed up video from 0.25x to 4x.",icon:Play,tag:"VIDEO"},
-{id:"thumbnail",title:"Video Thumbnail",desc:"Extract a clean frame from any supported video.",icon:Film,tag:"VIDEO"},
-{id:"gif",title:"GIF Maker",desc:"Turn a video clip into a lightweight animated GIF.",icon:WandSparkles,tag:"ANIMATION"},
-{id:"fade",title:"Audio Fade",desc:"Add smooth fade-in and fade-out to audio.",icon:VolumeX,tag:"AUDIO"},
-{id:"waveform",title:"Audio Waveform",desc:"Turn audio into a downloadable visual waveform.",icon:AudioWaveform,tag:"AUDIO"},
-{id:"archive",title:"ZIP Creator",desc:"Bundle multiple files into one downloadable ZIP.",icon:Archive,tag:"FILES"}
+import { useRef, useState } from "react";
+import { ArrowRight, Archive, AudioWaveform, CheckCircle2, Expand, Film, Gauge, Image as ImageIcon, Layers3, Maximize2, Play, Scissors, Sparkles, Stamp, Upload, VolumeX, WandSparkles, X } from "lucide-react";
+import Header from "../components/Header";
+import Footer from "../components/Footer";
+import "./tools.css";
+
+const API = (import.meta.env.VITE_API_URL || "https://convertflow-backend.onrender.com/api").replace(/\/$/, "");
+
+const TOOLS = [
+  { id: "crop", title: "Smart Image Crop", desc: "Crop images with precise dimensions and positioning.", icon: ImageIcon, tag: "IMAGE", endpoint: "/tools/image-crop" },
+  { id: "bg", title: "Background Remover", desc: "Remove simple image backgrounds and export transparent PNG.", icon: Scissors, tag: "IMAGE", endpoint: "/tools/image-background-remover" },
+  { id: "watermark", title: "Watermark Studio", desc: "Add a clean text watermark to your images.", icon: Stamp, tag: "IMAGE", endpoint: "/tools/image-watermark" },
+  { id: "enhance", title: "Image Enhancer", desc: "Improve levels and sharpness for a cleaner image.", icon: Sparkles, tag: "IMAGE", endpoint: "/tools/image-enhance" },
+  { id: "upscale", title: "Image Upscaler", desc: "Upscale images to 2K, 4K or 8K.", icon: Expand, tag: "IMAGE", endpoint: "/tools/image-upscale" },
+  { id: "compress", title: "Video Compressor", desc: "Shrink MP4 videos while keeping a strong quality balance.", icon: Gauge, tag: "VIDEO", endpoint: "/tools/video-compress" },
+  { id: "resolution", title: "Video Resolution", desc: "Convert videos to 480p, 720p, 1080p, 1440p or 4K.", icon: Maximize2, tag: "VIDEO", endpoint: "/tools/video-resolution" },
+  { id: "fps", title: "Frame Rate Converter", desc: "Convert video frame rate from 1 to 120 FPS.", icon: Film, tag: "VIDEO", endpoint: "/tools/video-framerate" },
+  { id: "mute", title: "Remove Video Audio", desc: "Create a clean silent copy of your video.", icon: VolumeX, tag: "VIDEO", endpoint: "/tools/video-mute" },
+  { id: "speed", title: "Video Speed", desc: "Slow down or speed up video from 0.25x to 4x.", icon: Play, tag: "VIDEO", endpoint: "/tools/video-speed" },
+  { id: "thumbnail", title: "Video Thumbnail", desc: "Extract a clean frame from any supported video.", icon: Film, tag: "VIDEO", endpoint: "/tools/video-thumbnail" },
+  { id: "gif", title: "GIF Maker", desc: "Turn a video clip into an animated GIF.", icon: WandSparkles, tag: "ANIMATION", endpoint: "/tools/gif" },
+  { id: "fade", title: "Audio Fade", desc: "Add smooth fade-in and fade-out to audio.", icon: VolumeX, tag: "AUDIO", endpoint: "/tools/audio-fade" },
+  { id: "waveform", title: "Audio Waveform", desc: "Turn audio into a downloadable visual waveform.", icon: AudioWaveform, tag: "AUDIO", endpoint: "/tools/audio-waveform" },
+  { id: "archive", title: "ZIP Creator", desc: "Bundle multiple files into one downloadable ZIP.", icon: Archive, tag: "FILES", endpoint: "/tools/archive/zip" }
 ];
-function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),500)}async function run(path,form){const r=await fetch(`${API}${path}`,{method:"POST",body:form});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.message||`Request failed (${r.status})`)}return r.blob()}
-export default function Tools(){const[tool,setTool]=useState(null),[file,setFile]=useState(null),[files,setFiles]=useState([]),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[quality,setQuality]=useState("medium"),[resolution,setResolution]=useState("original"),[time,setTime]=useState("1"),[fps,setFps]=useState("30"),[speed,setSpeed]=useState("1"),[fade,setFade]=useState("3"),[upscale,setUpscale]=useState("4k"),[watermark,setWatermark]=useState("ConvertFlow"),[crop,setCrop]=useState({width:"800",height:"600",x:"0",y:"0"});const inputRef=useRef(null),selected=TOOLS.find(x=>x.id===tool);const choose=e=>{const list=[...e.target.files];tool==="archive"?setFiles(list):setFile(list[0]||null);setMessage("")};
-async function process(){setMessage("");if(tool==="archive"){if(!files.length)return setMessage("Add at least one file to create your ZIP.");const f=new FormData();files.forEach(x=>f.append("files",x));setBusy(true);try{downloadBlob(await run("/tools/archive/zip",f),"convertflow-files.zip");setMessage("ZIP created successfully.")}catch(e){setMessage(e.message)}finally{setBusy(false)}return}if(!file)return setMessage("Choose a file first.");const f=new FormData();f.append("file",file);let endpoint="",name="";const base=file.name.replace(/\.[^.]+$/i,"");if(tool==="crop"){endpoint="/tools/image-crop";Object.entries(crop).forEach(([k,v])=>f.append(k,v));name=`${base}-cropped.png`}if(tool==="bg"){endpoint="/tools/image-background-remover";name=`${base}-no-background.png`}if(tool==="watermark"){endpoint="/tools/image-watermark";f.append("text",watermark);name=`${base}-watermarked.png`}if(tool==="enhance"){endpoint="/tools/image-enhance";name=`${base}-enhanced.png`}if(tool==="upscale"){endpoint="/tools/image-upscale";f.append("quality",upscale);name=`${base}-${upscale}.png`}if(tool==="compress"){endpoint="/tools/video-compress";f.append("quality",quality);f.append("resolution",resolution);name=`${base}-compressed.mp4`}if(tool==="resolution"){endpoint="/tools/video-resolution";f.append("resolution",resolution);name=`${base}-${resolution}.mp4`}if(tool==="fps"){endpoint="/tools/video-framerate";f.append("fps",fps);name=`${base}-${fps}fps.mp4`}if(tool==="mute"){endpoint="/tools/video-mute";name=`${base}-muted.mp4`}if(tool==="speed"){endpoint="/tools/video-speed";f.append("speed",speed);name=`${base}-${speed}x.mp4`}if(tool==="thumbnail"){endpoint="/tools/video-thumbnail";f.append("time",time);name=`${base}-thumbnail.jpg`}if(tool==="gif"){endpoint="/tools/gif";f.append("fps",fps);name=`${base}.gif`}if(tool==="fade"){endpoint="/tools/audio-fade";f.append("fade",fade);name=`${base}-fade.mp3`}if(tool==="waveform"){endpoint="/tools/audio-waveform";name=`${base}-waveform.png`}setBusy(true);try{downloadBlob(await run(endpoint,f),name);setMessage("Done. Your file is ready to download.")}catch(e){setMessage(e.message)}finally{setBusy(false)}}
-const isImage=["crop","bg","watermark","enhance","upscale"].includes(tool),isVideo=["compress","resolution","fps","mute","speed","thumbnail","gif"].includes(tool),isAudio=["fade","waveform"].includes(tool);
-return <div className="app tools-page"><Header/><main className="tools-shell"><section className="tools-hero"><div><span className="section-label">CONVERTFLOW LABS</span><h1>Powerful tools for<br/><span>your files.</span></h1><p>Go beyond basic conversion. Edit, enhance, compress, animate and package your files in one polished workspace.</p><div className="tools-hero-meta"><span><CheckCircle2 size={15}/> No account required</span><span><CheckCircle2 size={15}/> Temporary processing</span><span><CheckCircle2 size={15}/> Fast downloads</span></div></div><div className="tools-orb"><div className="orb-ring ring-a"/><div className="orb-ring ring-b"/><Sparkles size={34}/><small>CF LABS</small></div></section><section className="tools-section"><div className="tools-section-head"><div><span className="section-label">ADVANCED TOOLKIT</span><h2>Pick a tool and get to work</h2></div><p>{TOOLS.length} tools available</p></div><div className="tools-grid">{TOOLS.map(({id,title,desc,icon:Icon,tag})=><button key={id} className={`tool-card ${tool===id?"active":""}`} onClick={()=>{setTool(id);setMessage("");setFile(null);setFiles([])}}><div className="tool-card-top"><span className="tool-icon"><Icon size={22}/></span><span className="tool-tag">{tag}</span></div><h3>{title}</h3><p>{desc}</p><span className="tool-open">Open tool <ArrowRight size={15}/></span></button>)}</div></section>{selected&&<section className="tool-workspace"><div className="workspace-head"><div><span className="section-label">WORKSPACE</span><h2>{selected.title}</h2><p>{selected.desc}</p></div><button className="workspace-close" onClick={()=>setTool(null)} aria-label="Close"><X size={18}/></button></div><div className="workspace-body"><div className="workspace-upload" onClick={()=>inputRef.current?.click()}><input ref={inputRef} hidden type="file" multiple={tool==="archive"} accept={isImage?"image/*":isVideo?"video/*":isAudio?"audio/*":"*/*"} onChange={choose}/><div className="upload-circle"><Upload size={25}/></div><h3>{tool==="archive"?"Drop files here or browse":"Drop your file here or browse"}</h3><p>{tool==="archive"?"Select multiple files to package them into one ZIP.":"Your file is processed temporarily and returned as a download."}</p><span className="workspace-browse">Choose {tool==="archive"?"files":"file"}</span></div>{(file||files.length>0)&&<div className="selected-file"><Layers3 size={18}/><div><strong>{tool==="archive"?`${files.length} file${files.length===1?"":"s"} selected`:file.name}</strong><span>{tool==="archive"?"Ready to package":"Ready to process"}</span></div></div>}{tool==="crop"&&<div className="tool-options"><label>Width<input value={crop.width} onChange={e=>setCrop(c=>({...c,width:e.target.value}))}/></label><label>Height<input value={crop.height} onChange={e=>setCrop(c=>({...c,height:e.target.value}))}/></label><label>X position<input value={crop.x} onChange={e=>setCrop(c=>({...c,x:e.target.value}))}/></label><label>Y position<input value={crop.y} onChange={e=>setCrop(c=>({...c,y:e.target.value}))}/></label></div>}{tool==="watermark"&&<label className="single-option">Watermark text<input value={watermark} onChange={e=>setWatermark(e.target.value)} maxLength="100"/></label>}{tool==="upscale"&&<div className="tool-options"><label>Target quality<select value={upscale} onChange={e=>setUpscale(e.target.value)}><option value="2k">2K</option><option value="4k">4K</option><option value="8k">8K</option></select></label></div>}{(tool==="compress"||tool==="resolution")&&<div className="tool-options"><label>{tool==="compress"?"Quality":"Resolution"}{tool==="compress"?<select value={quality} onChange={e=>setQuality(e.target.value)}><option>low</option><option>medium</option><option>high</option></select>:<select value={resolution} onChange={e=>setResolution(e.target.value)}><option value="480p">480p</option><option value="720p">720p</option><option value="1080p">1080p</option><option value="1440p">1440p</option><option value="4k">4K</option></select>}</label>{tool==="compress"&&<label>Resolution<select value={resolution} onChange={e=>setResolution(e.target.value)}><option>original</option><option>1080p</option><option>720p</option><option>480p</option></select></label>}</div>}{tool==="fps"&&<label className="single-option">Target FPS<input value={fps} onChange={e=>setFps(e.target.value)} type="number" min="1" max="120"/></label>}{tool==="speed"&&<label className="single-option">Playback speed<select value={speed} onChange={e=>setSpeed(e.target.value)}><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1">1x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="4">4x</option></select></label>}{tool==="thumbnail"&&<label className="single-option">Timestamp in seconds<input value={time} onChange={e=>setTime(e.target.value)} type="number" min="0" step="0.5"/></label>}{tool==="gif"&&<label className="single-option">Frames per second<input value={fps} onChange={e=>setFps(e.target.value)} type="number" min="1" max="30"/></label>}{tool==="fade"&&<label className="single-option">Fade duration in seconds<input value={fade} onChange={e=>setFade(e.target.value)} type="number" min="0.1" max="30" step="0.5"/></label>}<div className="workspace-action"><button className="lab-primary" disabled={busy} onClick={process}>{busy?<><span className="spinner"/>Processing...</>:<>Process with ConvertFlow <ArrowRight size={17}/></>}</button>{message&&<p className={message.startsWith("Done")||message.includes("successfully")?"success-msg":"error-msg"} role="status">{message}</p>}</div></div></section>}{!tool&&<section className="tools-bottom"><div><span className="section-label">BUILT FOR REAL WORK</span><h2>Simple on the surface. Powerful underneath.</h2></div><div className="tool-trust"><article><Gauge/><strong>Fast processing</strong><span>Optimized backend workflows for common media tasks.</span></article><article><Layers3/><strong>One workspace</strong><span>Move between tools without leaving ConvertFlow.</span></article><article><CheckCircle2/><strong>Privacy minded</strong><span>Temporary files are cleaned after processing.</span></article></div></section>}</main><Footer/></div>}
+
+const imageTools = new Set(["crop", "bg", "watermark", "enhance", "upscale"]);
+const videoTools = new Set(["compress", "resolution", "fps", "mute", "speed", "thumbnail", "gif"]);
+const audioTools = new Set(["fade", "waveform"]);
+
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function request(endpoint, form) {
+  const response = await fetch(`${API}${endpoint}`, { method: "POST", body: form });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || `Request failed (${response.status})`);
+  }
+  return response.blob();
+}
+
+export default function Tools() {
+  const [toolId, setToolId] = useState(null);
+  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [quality, setQuality] = useState("medium");
+  const [resolution, setResolution] = useState("original");
+  const [fps, setFps] = useState("30");
+  const [speed, setSpeed] = useState("1");
+  const [time, setTime] = useState("1");
+  const [fade, setFade] = useState("3");
+  const [upscale, setUpscale] = useState("4k");
+  const [watermark, setWatermark] = useState("ConvertFlow");
+  const [crop, setCrop] = useState({ width: "800", height: "600", x: "0", y: "0" });
+  const inputRef = useRef(null);
+  const selected = TOOLS.find(tool => tool.id === toolId);
+
+  function openTool(id) {
+    setToolId(id);
+    setFile(null);
+    setFiles([]);
+    setMessage("");
+    setTimeout(() => document.querySelector(".tool-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
+  function chooseFiles(event) {
+    const selectedFiles = Array.from(event.target.files || []);
+    if (toolId === "archive") setFiles(selectedFiles);
+    else setFile(selectedFiles[0] || null);
+    setMessage("");
+    event.target.value = "";
+  }
+
+  async function processTool() {
+    setMessage("");
+    if (toolId === "archive") {
+      if (!files.length) return setMessage("Add at least one file first.");
+      const form = new FormData();
+      files.forEach(item => form.append("files", item));
+      setBusy(true);
+      try {
+        downloadBlob(await request(selected.endpoint, form), "convertflow-files.zip");
+        setMessage("ZIP created successfully.");
+      } catch (error) { setMessage(error.message); }
+      finally { setBusy(false); }
+      return;
+    }
+
+    if (!file) return setMessage("Choose a file first.");
+    const form = new FormData();
+    form.append("file", file);
+    const base = file.name.replace(/\.[^.]+$/i, "");
+    let output = `${base}-converted`;
+
+    if (toolId === "crop") {
+      Object.entries(crop).forEach(([key, value]) => form.append(key, value));
+      output = `${base}-cropped.png`;
+    } else if (toolId === "watermark") {
+      form.append("text", watermark); output = `${base}-watermarked.png`;
+    } else if (toolId === "upscale") {
+      form.append("quality", upscale); output = `${base}-${upscale}.png`;
+    } else if (toolId === "compress") {
+      form.append("quality", quality); form.append("resolution", resolution); output = `${base}-compressed.mp4`;
+    } else if (toolId === "resolution") {
+      form.append("resolution", resolution); output = `${base}-${resolution}.mp4`;
+    } else if (toolId === "fps") {
+      form.append("fps", fps); output = `${base}-${fps}fps.mp4`;
+    } else if (toolId === "speed") {
+      form.append("speed", speed); output = `${base}-${speed}x.mp4`;
+    } else if (toolId === "thumbnail") {
+      form.append("time", time); output = `${base}-thumbnail.jpg`;
+    } else if (toolId === "gif") {
+      form.append("fps", fps); output = `${base}.gif`;
+    } else if (toolId === "fade") {
+      form.append("fade", fade); output = `${base}-fade.mp3`;
+    } else if (toolId === "waveform") {
+      output = `${base}-waveform.png`;
+    } else if (toolId === "bg") {
+      output = `${base}-no-background.png`;
+    } else if (toolId === "enhance") {
+      output = `${base}-enhanced.png`;
+    } else if (toolId === "mute") {
+      output = `${base}-muted.mp4`;
+    }
+
+    setBusy(true);
+    try {
+      downloadBlob(await request(selected.endpoint, form), output);
+      setMessage("Done. Your file is ready to download.");
+    } catch (error) { setMessage(error.message); }
+    finally { setBusy(false); }
+  }
+
+  const accept = imageTools.has(toolId) ? "image/*" : videoTools.has(toolId) ? "video/*" : audioTools.has(toolId) ? "audio/*" : "*/*";
+
+  return (
+    <div className="app tools-page">
+      <Header />
+      <main className="tools-shell">
+        <section className="tools-hero">
+          <div>
+            <span className="section-label">CONVERTFLOW LABS</span>
+            <h1>Powerful tools for<br /><span>your files.</span></h1>
+            <p>Edit, enhance, compress, animate and package your files in one polished workspace.</p>
+            <div className="tools-hero-meta"><span><CheckCircle2 size={15} /> No account required</span><span><CheckCircle2 size={15} /> Temporary processing</span><span><CheckCircle2 size={15} /> Fast downloads</span></div>
+          </div>
+          <div className="tools-orb"><div className="orb-ring ring-a" /><div className="orb-ring ring-b" /><Sparkles size={34} /><small>CF LABS</small></div>
+        </section>
+
+        <section className="tools-section">
+          <div className="tools-section-head"><div><span className="section-label">ADVANCED TOOLKIT</span><h2>Pick a tool and get to work</h2></div><p>{TOOLS.length} tools available</p></div>
+          <div className="tools-grid">
+            {TOOLS.map(({ id, title, desc, icon: Icon, tag }) => (
+              <button type="button" key={id} className={`tool-card ${toolId === id ? "active" : ""}`} onClick={() => openTool(id)}>
+                <div className="tool-card-top"><span className="tool-icon"><Icon size={22} /></span><span className="tool-tag">{tag}</span></div>
+                <h3>{title}</h3><p>{desc}</p><span className="tool-open">Open tool <ArrowRight size={15} /></span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {selected && (
+          <section className="tool-workspace">
+            <div className="workspace-head"><div><span className="section-label">WORKSPACE</span><h2>{selected.title}</h2><p>{selected.desc}</p></div><button type="button" className="workspace-close" onClick={() => setToolId(null)} aria-label="Close"><X size={18} /></button></div>
+            <div className="workspace-body">
+              <div className="workspace-upload" onClick={() => inputRef.current?.click()}>
+                <input ref={inputRef} hidden type="file" multiple={toolId === "archive"} accept={accept} onChange={chooseFiles} />
+                <div className="upload-circle"><Upload size={25} /></div>
+                <h3>{toolId === "archive" ? "Drop files here or browse" : "Drop your file here or browse"}</h3>
+                <p>Your file is processed temporarily and returned as a download.</p>
+                <span className="workspace-browse">Choose {toolId === "archive" ? "files" : "file"}</span>
+              </div>
+
+              {(file || files.length) > 0 && <div className="selected-file"><Layers3 size={18} /><div><strong>{toolId === "archive" ? `${files.length} files selected` : file.name}</strong><span>Ready to process</span></div></div>}
+
+              {toolId === "crop" && <div className="tool-options">{[["Width","width"],["Height","height"],["X position","x"],["Y position","y"]].map(([label,key]) => <label key={key}>{label}<input value={crop[key]} onChange={e => setCrop(current => ({ ...current, [key]: e.target.value }))} /></label>)}</div>}
+              {toolId === "watermark" && <label className="single-option">Watermark text<input value={watermark} onChange={e => setWatermark(e.target.value)} maxLength="100" /></label>}
+              {toolId === "upscale" && <label className="single-option">Target quality<select value={upscale} onChange={e => setUpscale(e.target.value)}><option value="2k">2K</option><option value="4k">4K</option><option value="8k">8K</option></select></label>}
+              {toolId === "compress" && <div className="tool-options"><label>Quality<select value={quality} onChange={e => setQuality(e.target.value)}><option>low</option><option>medium</option><option>high</option></select></label><label>Resolution<select value={resolution} onChange={e => setResolution(e.target.value)}><option>original</option><option>1080p</option><option>720p</option><option>480p</option></select></label></div>}
+              {toolId === "resolution" && <label className="single-option">Resolution<select value={resolution} onChange={e => setResolution(e.target.value)}><option>480p</option><option>720p</option><option>1080p</option><option>1440p</option><option>4k</option></select></label>}
+              {toolId === "fps" && <label className="single-option">Target FPS<input type="number" min="1" max="120" value={fps} onChange={e => setFps(e.target.value)} /></label>}
+              {toolId === "speed" && <label className="single-option">Playback speed<select value={speed} onChange={e => setSpeed(e.target.value)}><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1">1x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="4">4x</option></select></label>}
+              {toolId === "thumbnail" && <label className="single-option">Timestamp in seconds<input type="number" min="0" step="0.5" value={time} onChange={e => setTime(e.target.value)} /></label>}
+              {toolId === "gif" && <label className="single-option">Frames per second<input type="number" min="1" max="30" value={fps} onChange={e => setFps(e.target.value)} /></label>}
+              {toolId === "fade" && <label className="single-option">Fade duration in seconds<input type="number" min="0.1" max="30" step="0.5" value={fade} onChange={e => setFade(e.target.value)} /></label>}
+
+              <div className="workspace-action"><button type="button" className="lab-primary" disabled={busy} onClick={processTool}>{busy ? <><span className="spinner" /> Processing...</> : <>Process with ConvertFlow <ArrowRight size={17} /></>}</button>{message && <p className={message.startsWith("Done") || message.includes("successfully") ? "success-msg" : "error-msg"} role="status">{message}</p>}</div>
+            </div>
+          </section>
+        )}
+
+        {!toolId && <section className="tools-bottom"><div><span className="section-label">BUILT FOR REAL WORK</span><h2>Simple on the surface. Powerful underneath.</h2></div><div className="tool-trust"><article><Gauge /><strong>Fast processing</strong><span>Optimized backend workflows for common media tasks.</span></article><article><Layers3 /><strong>One workspace</strong><span>Move between tools without leaving ConvertFlow.</span></article><article><CheckCircle2 /><strong>Privacy minded</strong><span>Temporary files are cleaned after processing.</span></article></div></section>}
+      </main>
+      <Footer />
+    </div>
+  );
+}
