@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 
@@ -91,28 +91,13 @@ function App() {
         <section className="panel">
           <div className="panel-title"><span>01</span><div><h2>API credentials</h2><p>Your key exists only in this page session.</p></div></div>
           <label className="field-label" htmlFor="api-key">ConvertFlow API key</label>
-          <input
-            id="api-key"
-            className="key-input"
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            placeholder="cf_live_..."
-            autoComplete="off"
-            spellCheck="false"
-          />
+          <input id="api-key" className="key-input" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="cf_live_..." autoComplete="off" spellCheck="false" />
           <div className="privacy-note"><span>●</span> Nothing is saved to localStorage, cookies, or the server. Refreshing this page clears the key.</div>
         </section>
 
         <section className="panel">
           <div className="panel-title"><span>02</span><div><h2>Conversion test</h2><p>Use the same conversion endpoint available to API customers.</p></div></div>
-          <div
-            className={`dropzone ${dragging ? "dragging" : ""} ${file ? "has-file" : ""}`}
-            onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(event) => { event.preventDefault(); setDragging(false); chooseFile(event.dataTransfer.files); }}
-            onClick={() => fileRef.current?.click()}
-          >
+          <div className={`dropzone ${dragging ? "dragging" : ""} ${file ? "has-file" : ""}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); chooseFile(event.dataTransfer.files); }} onClick={() => fileRef.current?.click()}>
             <input ref={fileRef} type="file" hidden onChange={(event) => chooseFile(event.target.files)} />
             <div className="upload-icon">↑</div>
             {file ? <><strong>{file.name}</strong><span>{(file.size / 1024 / 1024).toFixed(2)} MB · Click to replace</span></> : <><strong>Drop a file here</strong><span>or click to browse · maximum 100 MB</span></>}
