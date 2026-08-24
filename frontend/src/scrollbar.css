@@ -1,0 +1,65 @@
+/* ConvertFlow custom scrollbar */
+:root {
+  scrollbar-color: #555 #101010;
+  scrollbar-width: thin;
+}
+
+html {
+  scrollbar-color: #555 #101010;
+  scrollbar-width: thin;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #555 #101010;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #0b0b0b;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 40px;
+  border: 3px solid #0b0b0b;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #666 0%, #3f3f3f 100%);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #858585 0%, #555 100%);
+}
+
+*::-webkit-scrollbar-corner {
+  background: #0b0b0b;
+}
+
+/* Light theme support, including nested scrollable panels. */
+html.light,
+body.light,
+[data-theme="light"] {
+  scrollbar-color: #9b9b9b #eeeeee;
+}
+
+html.light *::-webkit-scrollbar-track,
+body.light *::-webkit-scrollbar-track,
+[data-theme="light"] *::-webkit-scrollbar-track {
+  background: #eeeeee;
+}
+
+html.light *::-webkit-scrollbar-thumb,
+body.light *::-webkit-scrollbar-thumb,
+[data-theme="light"] *::-webkit-scrollbar-thumb {
+  border-color: #eeeeee;
+  background: linear-gradient(180deg, #a9a9a9 0%, #7d7d7d 100%);
+}
+
+html.light *::-webkit-scrollbar-thumb:hover,
+body.light *::-webkit-scrollbar-thumb:hover,
+[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #888 0%, #666 100%);
+}
