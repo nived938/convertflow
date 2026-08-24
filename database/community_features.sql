@@ -4,8 +4,10 @@ create table if not exists public.convertflow_announcement (
   title text not null default '',
   message text not null default '',
   type text not null default 'info',
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  expires_at timestamptz null
 );
+alter table public.convertflow_announcement add column if not exists expires_at timestamptz null;
 insert into public.convertflow_announcement (id) values (1) on conflict (id) do nothing;
 create table if not exists public.convertflow_donation_requests (
   id uuid primary key,
