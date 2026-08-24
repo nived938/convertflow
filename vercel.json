@@ -3,5 +3,8 @@
   "outputDirectory": "frontend/dist",
   "installCommand": "echo 'Dependencies installed in buildCommand'",
   "framework": "vite",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
