@@ -1,4 +1,81 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Moon, Sun } from "lucide-react";
-export default function Header(){const[mobileOpen,setMobileOpen]=useState(false);const[light,setLight]=useState(()=>localStorage.getItem("convertflow_theme")==="light");useEffect(()=>{document.documentElement.dataset.theme=light?"light":"dark";localStorage.setItem("convertflow_theme",light?"light":"dark")},[light]);const close=()=>setMobileOpen(false);const link=(to,label)=><NavLink to={to} className={({isActive})=>isActive?"nav-link active":"nav-link"} onClick={close}>{label}</NavLink>;return <header className="site-header"><div className="header-inner"><Link to="/" className="header-logo" onClick={close}><img src="/favicon.svg" alt="" style={{width:27,height:27,verticalAlign:"middle",marginRight:8}}/>ConvertFlow</Link><nav className={`header-nav ${mobileOpen?"mobile-open":""`}>{link("/","Home")}{link("/tools","Tools")}{link("/advanced-tools","Advanced")}{link("/about","About")}{link("/api","API")}{link("/formats","Formats")}<button className="theme-toggle" type="button" onClick={()=>setLight(v=>!v)} aria-label={light?"Use dark mode":"Use light mode"}>{light?<Moon size={16}/>:<Sun size={16}/>}</button><Link to="/donate" className="header-signup" onClick={close}>Donate ☕</Link></nav><button className={`mobile-menu-button ${mobileOpen?"open":""}`} type="button" aria-label="Toggle navigation" aria-expanded={mobileOpen} onClick={()=>setMobileOpen(v=>!v)}><span/><span/><span/></button></div></header>}
+
+export default function Header() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [light, setLight] = useState(
+    () => localStorage.getItem("convertflow_theme") === "light"
+  );
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = light ? "light" : "dark";
+    localStorage.setItem("convertflow_theme", light ? "light" : "dark");
+  }, [light]);
+
+  const close = () => setMobileOpen(false);
+
+  const link = (to, label) => (
+    <NavLink
+      to={to}
+      className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+      onClick={close}
+    >
+      {label}
+    </NavLink>
+  );
+
+  return (
+    <header className="site-header">
+      <div className="header-inner">
+        <Link to="/" className="header-logo" onClick={close}>
+          <img
+            src="/favicon.svg"
+            alt=""
+            style={{
+              width: 27,
+              height: 27,
+              verticalAlign: "middle",
+              marginRight: 8,
+            }}
+          />
+          ConvertFlow
+        </Link>
+
+        <nav className={`header-nav ${mobileOpen ? "mobile-open" : ""}`}>
+          {link("/", "Home")}
+          {link("/tools", "Tools")}
+          {link("/advanced-tools", "Advanced")}
+          {link("/about", "About")}
+          {link("/api", "API")}
+          {link("/formats", "Formats")}
+
+          <button
+            className="theme-toggle"
+            type="button"
+            onClick={() => setLight((v) => !v)}
+            aria-label={light ? "Use dark mode" : "Use light mode"}
+          >
+            {light ? <Moon size={16} /> : <Sun size={16} />}
+          </button>
+
+          <Link to="/donate" className="header-signup" onClick={close}>
+            Donate ☕
+          </Link>
+        </nav>
+
+        <button
+          className={`mobile-menu-button ${mobileOpen ? "open" : ""}`}
+          type="button"
+          aria-label="Toggle navigation"
+          aria-expanded={mobileOpen}
+          onClick={() => setMobileOpen((v) => !v)}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+      </div>
+    </header>
+  );
+}
