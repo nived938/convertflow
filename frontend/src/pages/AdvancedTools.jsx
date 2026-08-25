@@ -24,7 +24,9 @@ const tools=[
  ["beautify","Screenshot Beautifier",Camera,"Put screenshots inside a polished card with shadow and rounded corners."],
  ["favicon","Favicon Generator",ImagePlus,"Generate 16, 32, 48, 180, 192 and 512px favicon files."],
  ["webp","Animated WebP Converter",FileArchive,"Send animated GIF/video sources to the conversion API as WebP."],
- ["command","ConvertFlow Command Generator",Braces,"Generate cURL, FFmpeg and ImageMagick command templates."]
+ ["command","ConvertFlow Command Generator",Braces,"Generate cURL, FFmpeg and ImageMagick command templates."],
+ ["ai-image","AI Image Generator",Sparkles,"Generate images with Google Nano Banana and preview the result here."],
+ ["tts","Text to Audio",Sparkles,"Turn text into natural speech with Fish Audio."]
 ];
 
 export default function AdvancedTools(){
