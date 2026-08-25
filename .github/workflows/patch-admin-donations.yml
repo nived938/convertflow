@@ -1,0 +1,36 @@
+name: Patch admin donations
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch AdminControl
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          p = Path('frontend/src/pages/AdminControl.jsx')
+          s = p.read_text()
+          marker = 'async function removeSupporter(id){'
+          if 'async function acceptDonation(id)' not in s:
+              insert = '''async function acceptDonation(id){\n  if(!confirm("Accept this donation request and add the name to the public supporters list?"))return;\n  setBusy(true);\n  try{await request(`/admin/donations/${id}/accept`,token,{method:"POST"});setMessage("Donation request accepted and added to supporters.");await load()}catch(e){setMessage(e.message)}finally{setBusy(false)}\n}\nasync function deleteDonation(id){\n  if(!confirm("Delete this donation request? The name will no longer appear as a pending request."))return;\n  setBusy(true);\n  try{await request(`/admin/donations/${id}`,token,{method:"DELETE"});setMessage("Donation request deleted.");await load()}catch(e){setMessage(e.message)}finally{setBusy(false)}\n}\n'''
+              s = s.replace(marker, insert + marker, 1)
+          pattern = r'<div style=\{\{padding:16,borderRadius:17,background:"rgba\(255,255,255,\.025\)",border:"1px solid rgba\(148,163,184,\.12\)"\}\}><b>Donation requests</b>.*?</div><div style=\{\{padding:16,borderRadius:17,background:"rgba\(255,255,255,\.025\)",border:"1px solid rgba\(148,163,184,\.12\)"\}\}><b>Our Supporters</b>'
+          replacement = '''<div style={{padding:16,borderRadius:17,background:"rgba(255,255,255,.025)",border:"1px solid rgba(148,163,184,.12)"}}><b>Donation requests</b>{donations.length?<div style={{display:"grid",gap:8,marginTop:12}}>{donations.slice(0,30).map(d=><div key={d.id} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,padding:12,borderRadius:12,background:"rgba(0,0,0,.18)",border:"1px solid rgba(148,163,184,.08)"}}><div><strong style={{display:"block"}}>{d.name}</strong><small style={{opacity:.5}}>{d.status} · {new Date(d.created_at).toLocaleDateString()}</small></div>{d.status==="pending"?<div style={{display:"flex",gap:7,alignItems:"center"}}><Button variant="primary" disabled={busy} onClick={()=>acceptDonation(d.id)}><CheckCircle2 size={15}/> Accept</Button><Button variant="danger" disabled={busy} onClick={()=>deleteDonation(d.id)}><Trash2 size={15}/> Delete</Button></div>:<small style={{opacity:.55,alignSelf:"center"}}>Reviewed</small>}</div>)}</div>:<p style={{opacity:.45}}>No donation requests yet.</p>}</div><div style={{padding:16,borderRadius:17,background:"rgba(255,255,255,.025)",border:"1px solid rgba(148,163,184,.12)"}}><b>Our Supporters</b>'''
+          ns, n = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('Could not locate donation panel in AdminControl.jsx')
+          p.write_text(ns)
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/src/pages/AdminControl.jsx
+          git diff --cached --quiet || git commit -m 'Add admin donation request actions'
+          git push
