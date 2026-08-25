@@ -56,12 +56,13 @@ router.post("/text-to-audio", optionalApiKey, async (req,res) => {
     if(!key) return res.status(503).json({success:false,message:"OPENROUTER_API_KEY is not configured on the backend."});
     const text=String(req.body?.text||"").trim();
     if(!text) return res.status(400).json({success:false,message:"Enter text to convert to audio."});
-    const model=process.env.OPENROUTER_TTS_MODEL || "fish/audio-s2.1-pro:free";
-    const voice=String(req.body?.voice || process.env.OPENROUTER_TTS_VOICE || "alloy");
-    const response=await fetch("https://openrouter.ai/api/v1/audio/speech",{method:"POST",headers:openRouterHeaders(),body:JSON.stringify({model,input:text,voice,response_format:"mp3"})});
+    const model=process.env.OPENROUTER_TTS_MODEL || "fish-audio/s2.1-pro-free:free";
+    const body={model,input:text,response_format:"mp3"};
+    if(req.body?.voice) body.voice=String(req.body.voice).trim();
+    const response=await fetch("https://openrouter.ai/api/v1/audio/speech",{method:"POST",headers:openRouterHeaders(),body:JSON.stringify(body)});
     if(!response.ok){const detail=await response.text().catch(()=>"");throw new Error(`OpenRouter TTS returned ${response.status}${detail?`: ${detail.slice(0,400)}`:""}`);}
     const buffer=Buffer.from(await response.arrayBuffer());
-    res.setHeader("Content-Type","audio/mpeg"); res.setHeader("Content-Disposition","attachment; filename=\"convertflow-ai-voice.mp3\""); res.setHeader("Content-Length",String(buffer.length)); return res.end(buffer);
+    res.setHeader("Content-Type",response.headers.get("content-type") || "audio/mpeg"); res.setHeader("Content-Disposition","attachment; filename=\"convertflow-ai-voice.mp3\""); res.setHeader("Content-Length",String(buffer.length)); return res.end(buffer);
   } catch(error) { console.error("OpenRouter TTS error:",error); return res.status(500).json({success:false,message:error.message||"Text-to-audio failed."}); }
 });
 
