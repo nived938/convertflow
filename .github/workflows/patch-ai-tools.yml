@@ -1,0 +1,49 @@
+name: Patch AI tools UI
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch frontend
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/AdvancedTools.jsx'); s=p.read_text()
+          if '"ai-image"' not in s:
+              s=s.replace('["command", "ConvertFlow Command Generator", Braces, "Generate cURL, FFmpeg and ImageMagick command templates."]', '["command","ConvertFlow Command Generator",Braces,"Generate cURL, FFmpeg and ImageMagick command templates."],\n ["ai-image","AI Image Generator",Sparkles,"Generate images with Google Nano Banana and preview the result here."],\n ["tts","Text to Audio",Sparkles,"Turn text into natural speech with Fish Audio."]')
+              s=s.replace('const [active,setActive]=useState("analyzer"),[files,setFiles]=useState([]),[result,setResult]=useState(null),[text,setText]=useState("https://convertflow-seven-delta.vercel.app/"),', 'const [active,setActive]=useState("analyzer"),[files,setFiles]=useState([]),[result,setResult]=useState(null),[text,setText]=useState("https://convertflow-seven-delta.vercel.app/"),[aiPrompt,setAiPrompt]=useState(""),[aiSize,setAiSize]=useState("1K"),[aiGenerating,setAiGenerating]=useState(false),[ttsText,setTtsText]=useState(""),[ttsSpeed,setTtsSpeed]=useState("1"),[ttsGenerating,setTtsGenerating]=useState(false),')
+              marker='  if(active==="analyzer")'
+              insert='''  if(active==="ai-image"){\n   if(!aiPrompt.trim()){setResult({error:"Enter an image prompt."});return}\n   setAiGenerating(true);setResult({generating:true});\n   try{const r=await fetch(`${import.meta.env.VITE_API_URL||"https://convertflow-backend.onrender.com/api"}/tools/image-generate`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:aiPrompt,size:aiSize})});const d=await r.json();if(!r.ok||!d.success)throw new Error(d.message||`Generation failed (${r.status})`);setResult({dataUrl:d.image,name:"convertflow-ai-generated.png"})}catch(e){setResult({error:e.message})}finally{setAiGenerating(false)}\n   return}\n  if(active==="tts"){\n   if(!ttsText.trim()){setResult({error:"Enter text to convert to audio."});return}\n   setTtsGenerating(true);setResult({ttsLoading:true});\n   try{const r=await fetch(`${import.meta.env.VITE_API_URL||"https://convertflow-backend.onrender.com/api"}/tools/text-to-audio`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:ttsText,speed:ttsSpeed})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.message||`TTS failed (${r.status})`)}const blob=await r.blob();setResult({audioUrl:URL.createObjectURL(blob),name:"convertflow-ai-voice.mp3"})}catch(e){setResult({error:e.message})}finally{setTtsGenerating(false)}\n   return}\n'''
+              s=s.replace(marker,insert+marker,1)
+              old='<button className="advanced-run" onClick={run}><Sparkles size={17}/> Run utility</button>'
+              new='''{active==="ai-image"&&<div className="advanced-ai-form"><textarea className="advanced-input" rows="5" value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} placeholder="Describe the image you want..."/><select className="advanced-input" value={aiSize} onChange={e=>setAiSize(e.target.value)}><option>0.5K</option><option>1K</option><option>2K</option><option>4K</option></select><button className="advanced-run" disabled={aiGenerating} onClick={run}><Sparkles size={17}/>{aiGenerating?"Generating...":"Generate image"}</button></div>}\n {active==="tts"&&<div className="advanced-ai-form"><textarea className="advanced-input" rows="7" value={ttsText} onChange={e=>setTtsText(e.target.value)} placeholder="Type the text you want to hear..."/><label className="advanced-input-row">Voice speed <input type="range" min="0.5" max="2" step="0.1" value={ttsSpeed} onChange={e=>setTtsSpeed(e.target.value)}/><span>{ttsSpeed}×</span></label><button className="advanced-run" disabled={ttsGenerating} onClick={run}><Sparkles size={17}/>{ttsGenerating?"Generating audio...":"Generate audio"}</button></div>}\n {!["ai-image","tts"].includes(active)&&<button className="advanced-run" onClick={run}><Sparkles size={17}/> Run utility</button>}'''
+              s=s.replace(old,new,1)
+              s=s.replace('{result?.dataUrl&&<div className="advanced-result"><img src={result.dataUrl} alt="Generated result"/>', '{result?.generating&&<div className="advanced-result ai-generating-preview"><div className="ai-preview-shimmer"><Sparkles size={34}/><strong>Generating your image...</strong><span>Nano Banana is creating the preview</span></div></div>}{result?.dataUrl&&<div className="advanced-result"><img src={result.dataUrl} alt="Generated result"/>')
+              s=s.replace('{result?.error&&<div className="advanced-error">{result.error}</div>}', '{result?.audioUrl&&<div className="advanced-result"><audio controls src={result.audioUrl} style={{width:"100%"}}/><button onClick={async()=>{const r=await fetch(result.audioUrl);download(await r.blob(),result.name)}}><Download size={16}/> Download MP3</button></div>}{result?.error&&<div className="advanced-error">{result.error}</div>}')
+              p.write_text(s)
+
+          p=Path('frontend/src/components/ProgressCard.jsx'); s=p.read_text()
+          s=s.replace('import { useEffect, useState } from "react";', 'import { useEffect, useRef, useState } from "react";')
+          start=s.index('  const [stalled, setStalled] = useState(false);')
+          end=s.index('\n\n  const showSpinner', start)
+          replacement='''  const [stalled, setStalled] = useState(false);\n  const lastProgressRef = useRef(progress);\n  const lastChangeRef = useRef(Date.now());\n\n  useEffect(() => {\n    if (progress !== lastProgressRef.current) { lastProgressRef.current = progress; lastChangeRef.current = Date.now(); setStalled(false); }\n  }, [progress]);\n\n  useEffect(() => {\n    if (isComplete || isFailed) { setStalled(false); return undefined; }\n    const timer = window.setInterval(() => {\n      setStalled(Date.now() - lastChangeRef.current >= 2000);\n    }, 200);\n    return () => window.clearInterval(timer);\n  }, [isComplete, isFailed]);'''
+          s=s[:start]+replacement+s[end:]
+          s=s.replace('<LoaderCircle size={20} className="spin" />', '<LoaderCircle size={20} style={{animation:"cfProgressSpin .9s linear infinite"}} />')
+          p.write_text(s)
+
+          css=Path('frontend/src/pages/advancedTools.css'); css.write_text(css.read_text()+'\n.ai-generating-preview{min-height:360px;display:grid;place-items:center;overflow:hidden}.ai-preview-shimmer{width:100%;height:100%;min-height:320px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:20px;background:linear-gradient(110deg,rgba(255,255,255,.03) 30%,rgba(255,255,255,.12) 45%,rgba(255,255,255,.03) 60%);background-size:200% 100%;animation:cfAiShimmer 1.5s linear infinite}.ai-preview-shimmer strong{font-size:18px}.ai-preview-shimmer span{opacity:.55;font-size:13px}@keyframes cfAiShimmer{to{background-position:-200% 0}}\n')
+          idx=Path('frontend/src/index.css'); x=idx.read_text(); x+='\n@keyframes cfProgressSpin{to{transform:rotate(360deg)}}\n'
+          idx.write_text(x)
+      - name: Commit frontend patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/src/pages/AdvancedTools.jsx frontend/src/components/ProgressCard.jsx frontend/src/pages/advancedTools.css frontend/src/index.css
+          git diff --cached --quiet || git commit -m 'Add AI generation tools and reliable progress stall indicator'
+          git push
