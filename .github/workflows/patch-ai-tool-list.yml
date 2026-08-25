@@ -1,0 +1,29 @@
+name: Add AI tools to advanced list
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add AI tools
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/AdvancedTools.jsx')
+          s=p.read_text()
+          needle=' ["command","ConvertFlow Command Generator",Braces,"Generate cURL, FFmpeg and ImageMagick command templates."]'
+          if '"ai-image","AI Image Generator"' not in s:
+              s=s.replace(needle, needle+',\n ["ai-image","AI Image Generator",Sparkles,"Generate images with Google Nano Banana and preview the result here."],\n ["tts","Text to Audio",Sparkles,"Turn text into natural speech with Fish Audio."]')
+          p.write_text(s)
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/src/pages/AdvancedTools.jsx
+          git diff --cached --quiet || git commit -m 'Add AI tools to advanced tools list'
+          git push
