@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Download, LoaderCircle, XCircle } from "lucide-react";
 
 export default function ProgressCard({
@@ -11,16 +11,20 @@ export default function ProgressCard({
   const isComplete = status === "complete";
   const isFailed = status === "failed";
   const [stalled, setStalled] = useState(false);
+  const lastProgressRef = useRef(progress);
+  const lastChangeRef = useRef(Date.now());
 
   useEffect(() => {
-    if (isComplete || isFailed) {
-      setStalled(false);
-      return undefined;
-    }
-    setStalled(false);
-    const timer = window.setTimeout(() => setStalled(true), 2000);
-    return () => window.clearTimeout(timer);
-  }, [progress, status, isComplete, isFailed]);
+    if (progress !== lastProgressRef.current) { lastProgressRef.current = progress; lastChangeRef.current = Date.now(); setStalled(false); }
+  }, [progress]);
+
+  useEffect(() => {
+    if (isComplete || isFailed) { setStalled(false); return undefined; }
+    const timer = window.setInterval(() => {
+      setStalled(Date.now() - lastChangeRef.current >= 2000);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, [isComplete, isFailed]);
 
   const showSpinner = !isComplete && !isFailed && stalled;
 
@@ -39,7 +43,7 @@ export default function ProgressCard({
           </div>
         </div>
         <span className={`progress-percentage ${showSpinner ? "progress-stalled" : ""}`} aria-label={showSpinner ? "Processing is still active" : `${Math.round(progress)} percent complete`}>
-          {showSpinner ? <LoaderCircle size={20} className="spin" /> : `${Math.round(progress)}%`}
+          {showSpinner ? <LoaderCircle size={20} style={{animation:"cfProgressSpin .9s linear infinite"}} /> : `${Math.round(progress)}%`}
         </span>
       </div>
       <div className="progress-track">
