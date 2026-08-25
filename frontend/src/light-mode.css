@@ -1,0 +1,101 @@
+html[data-theme="light"] {
+  --background: #f4f7fb;
+  --surface: #ffffff;
+  --surface-light: #f8fafc;
+  --surface-hover: #eef2f7;
+  --border: rgba(15, 23, 42, 0.12);
+  --text: #172033;
+  --muted: #526176;
+  --dimmed: #718096;
+  color: var(--text);
+  background: var(--background);
+  color-scheme: light;
+}
+
+html[data-theme="light"] body {
+  background: radial-gradient(circle at 50% 0%, rgba(239,68,68,.08), transparent 35%), var(--background) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="light"] .site-header {
+  background: rgba(255,255,255,.88) !important;
+  border-bottom-color: rgba(15,23,42,.10) !important;
+  box-shadow: 0 8px 30px rgba(15,23,42,.06);
+}
+
+html[data-theme="light"] .nav-link,
+html[data-theme="light"] .nav-button {
+  color: #475569 !important;
+}
+
+html[data-theme="light"] .nav-link:hover,
+html[data-theme="light"] .nav-button:hover {
+  color: #0f172a !important;
+  background: rgba(15,23,42,.06) !important;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select {
+  background: #ffffff !important;
+  color: #172033 !important;
+  border-color: rgba(15,23,42,.14) !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="light"] .progress-card,
+html[data-theme="light"] .file-card,
+html[data-theme="light"] .tool-card,
+html[data-theme="light"] .converter-card,
+html[data-theme="light"] .drop-zone,
+html[data-theme="light"] .format-selector,
+html[data-theme="light"] .conversion-options,
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .donate-qr-card,
+html[data-theme="light"] .donate-copy,
+html[data-theme="light"] .pricing-card,
+html[data-theme="light"] .auth-card,
+html[data-theme="light"] .dashboard-card {
+  background: #ffffff !important;
+  color: var(--text) !important;
+  border-color: rgba(15,23,42,.11) !important;
+  box-shadow: 0 14px 40px rgba(15,23,42,.07) !important;
+}
+
+html[data-theme="light"] .progress-track {
+  background: #e5eaf1 !important;
+}
+
+html[data-theme="light"] .drop-zone:hover,
+html[data-theme="light"] .tool-card:hover,
+html[data-theme="light"] .feature-card:hover {
+  background: #f8fafc !important;
+}
+
+html[data-theme="light"] .muted,
+html[data-theme="light"] .dimmed,
+html[data-theme="light"] small {
+  color: var(--muted) !important;
+}
+
+html[data-theme="light"] .footer {
+  background: #eef2f7 !important;
+  color: #475569 !important;
+  border-top-color: rgba(15,23,42,.10) !important;
+}
+
+html[data-theme="light"] .admin-control-page {
+  background: #f4f7fb !important;
+  color: #172033 !important;
+}
+
+.progress-stalled {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+}
