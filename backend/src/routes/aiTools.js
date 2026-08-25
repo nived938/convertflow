@@ -37,7 +37,7 @@ router.post("/image-generate", optionalApiKey, async (req,res) => {
   } catch(error) { console.error("AI image generation error:",error); return res.status(500).json({success:false,message:error.message||"Image generation failed."}); }
 });
 
-router.post("/image-upscale-ai", optionalApiKey, upload.single("file"), async (req,res) => {
+router.post("/image-upscale", optionalApiKey, upload.single("file"), async (req,res) => {
   try {
     if(!req.file) return res.status(400).json({success:false,message:"No image was uploaded."});
     const size=String(req.body?.quality||"4k").toLowerCase()==="2k" ? "2K" : "4K";
