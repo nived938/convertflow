@@ -14,12 +14,15 @@ const cleanup = (...files) => files.flat().forEach(file => { if (file && fs.exis
 const mimeFromPath = file => ({ ".png":"image/png", ".jpg":"image/jpeg", ".jpeg":"image/jpeg", ".webp":"image/webp", ".gif":"image/gif" })[path.extname(file).toLowerCase()] || "application/octet-stream";
 const openRouterHeaders = () => ({ Authorization:`Bearer ${process.env.OPENROUTER_API_KEY}`, "Content-Type":"application/json", "HTTP-Referer":process.env.FRONTEND_URL || "https://convertflow-seven-delta.vercel.app", "X-OpenRouter-Title":"ConvertFlow" });
 
+// OpenRouter's free image catalog changes over time. Recraft V4.1 Pro is currently listed as a free image endpoint.
+const FREE_IMAGE_MODEL = "recraft/recraft-v4.1-pro:free";
+
 async function openRouterImage(prompt, size="1K", input=null) {
   const key=process.env.OPENROUTER_API_KEY;
   if(!key) throw new Error("OPENROUTER_API_KEY is not configured on the backend.");
-  const model=process.env.OPENROUTER_IMAGE_MODEL || "recraft/recraft-v3:free";
+  const model=process.env.OPENROUTER_IMAGE_MODEL || FREE_IMAGE_MODEL;
   const body={model,prompt,n:1};
-  if(model!=="recraft/recraft-v3:free" && ["0.5K","1K","2K","4K"].includes(size)) body.resolution=size;
+  if (model !== FREE_IMAGE_MODEL && ["0.5K","1K","2K","4K"].includes(size)) body.resolution=size;
   if(input) body.input_references=[`data:${input.mime};base64,${input.data}`];
   const response=await fetch("https://openrouter.ai/api/v1/images",{method:"POST",headers:openRouterHeaders(),body:JSON.stringify(body)});
   const result=await response.json().catch(()=>({}));
@@ -34,7 +37,7 @@ router.post("/image-generate",optionalApiKey,async(req,res)=>{
     const prompt=String(req.body?.prompt||"").trim();
     if(!prompt) return res.status(400).json({success:false,message:"Enter an image prompt."});
     const result=await openRouterImage(prompt,"1K");
-    return res.json({success:true,image:`data:${result.mime};base64,${result.data}`,usage:result.usage||null,model:process.env.OPENROUTER_IMAGE_MODEL||"recraft/recraft-v3:free",free:true});
+    return res.json({success:true,image:`data:${result.mime};base64,${result.data}`,usage:result.usage||null,model:process.env.OPENROUTER_IMAGE_MODEL||FREE_IMAGE_MODEL,free:true});
   }catch(error){console.error("OpenRouter image generation error:",error);return res.status(500).json({success:false,message:error.message||"Image generation failed."});}
 });
 
@@ -43,7 +46,7 @@ router.post("/image-upscale",optionalApiKey,upload.single("file"),async(req,res)
     if(!req.file) return res.status(400).json({success:false,message:"No image was uploaded."});
     const size=String(req.body?.quality||"4k").toLowerCase()==="2k"?"2K":"4K";
     const input={mime:mimeFromPath(req.file.path),data:fs.readFileSync(req.file.path).toString("base64")};
-    const result=await openRouterImage(`AI super-resolution upscale this exact image to ${size}. Preserve the subject, identity, composition, colors, text, logos and framing. Reconstruct plausible missing fine detail, improve edges, textures, faces and clarity, reduce noise and compression artifacts. Do not redesign, stylize, crop or add objects. Output only the enhanced image.`,size,input);
+    const result=await openRouterImage(`Enhance this exact image as a professional AI super-resolution restoration. Preserve the subject, identity, composition, colors, text, logos and framing. Reconstruct plausible missing fine detail, improve edges, textures, faces and clarity, reduce noise and compression artifacts. Do not redesign, stylize, crop or add objects. Return only the enhanced image. Target ${size}.`,size,input);
     const buffer=Buffer.from(result.data,"base64");
     res.setHeader("Content-Type",result.mime);res.setHeader("Content-Disposition",`attachment; filename="convertflow-ai-upscaled.${result.mime.includes("jpeg")?"jpg":"png"}"`);res.setHeader("Content-Length",String(buffer.length));return res.end(buffer);
   }catch(error){console.error("OpenRouter AI upscale error:",error);return res.status(500).json({success:false,message:error.message||"AI upscaling failed."});}
