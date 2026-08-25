@@ -1,0 +1,48 @@
+name: Fix AI tools file UI
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove file requirement from AI tools
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/AdvancedTools.jsx')
+          s=p.read_text()
+          old='async function run(){setResult(null);if(!files.length&&!["qr","barcode","command"].includes(active)){setResult({error:"Choose a file first."});return}\n  if(active==="ai-image")'
+          new='async function run(){setResult(null);if(active==="ai-image")'
+          if old not in s:
+              raise SystemExit('Expected run guard not found')
+          s=s.replace(old,new,1)
+          old_label='<label className="file-button"><input ref={input} hidden type="file" multiple accept={active===\'analyzer\'||active===\'duplicates\'||active===\'rename\'||active===\'split\'||active===\'merge\'||active===\'contact\'||active===\'palette\'||active===\'blur\'||active===\'pixelate\'||active===\'beautify\'||active===\'favicon\'?\'*/*\':\'image/*\' } onChange={pick}/><FilePlus2 size={17}/> Choose files</label>'
+          new_label='{!["ai-image","tts"].includes(active)&&<label className="file-button"><input ref={input} hidden type="file" multiple accept={active===\'analyzer\'||active===\'duplicates\'||active===\'rename\'||active===\'split\'||active===\'merge\'||active===\'contact\'||active===\'palette\'||active===\'blur\'||active===\'pixelate\'||active===\'beautify\'||active===\'favicon\'?\'*/*\':\'image/*\' } onChange={pick}/><FilePlus2 size={17}/> Choose files</label>}'
+          if old_label not in s:
+              raise SystemExit('Expected file button not found')
+          s=s.replace(old_label,new_label,1)
+          p.write_text(s)
+      - name: Remove stale selected files when entering AI tools
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/AdvancedTools.jsx')
+          s=p.read_text()
+          old='onClick={()=>{setActive(id);setResult(null)}}'
+          new='onClick={()=>{setActive(id);setResult(null);if(id==="ai-image"||id==="tts")setFiles([])}}'
+          if old not in s:
+              raise SystemExit('Expected tool click handler not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/src/pages/AdvancedTools.jsx
+          git diff --cached --quiet || git commit -m 'Fix AI tools so they do not require file uploads'
+          git push
