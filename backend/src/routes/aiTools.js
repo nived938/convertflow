@@ -16,62 +16,45 @@ const openRouterHeaders = () => ({ Authorization:`Bearer ${process.env.OPENROUTE
 async function pollinationsImage(prompt) {
   const key = process.env.POLLINATIONS_API_KEY;
   if (!key) throw new Error("POLLINATIONS_API_KEY is not configured on the backend.");
-  const model = process.env.POLLINATIONS_IMAGE_MODEL || "nanobanana-2";
-  const url = "https://gen.pollinations.ai/image/" + encodeURIComponent(prompt);
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { Authorization:`Bearer ${key}`, "Content-Type":"application/json" },
-    body: JSON.stringify({ model, width: 1024, height: 1024, enhance: true, safe: false })
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Pollinations image generation failed (${response.status})${detail ? `: ${detail.slice(0,500)}` : ""}`);
-  }
-  const contentType = response.headers.get("content-type") || "image/png";
-  const buffer = Buffer.from(await response.arrayBuffer());
-  return { data: buffer.toString("base64"), mime: contentType, model };
+  const model = process.env.POLLINATIONS_IMAGE_MODEL || "flux";
+  const url = "https://gen.pollinations.ai/image/" + encodeURIComponent(prompt) + `?model=${encodeURIComponent(model)}&width=1024&height=1024&enhance=true`;
+  const response = await fetch(url, { method:"GET", headers:{ Authorization:`Bearer ${key}`, Accept:"image/png,image/jpeg,image/*" } });
+  if (!response.ok) { const detail=await response.text().catch(()=>""); throw new Error(`Pollinations image generation failed (${response.status})${detail?`: ${detail.slice(0,500)}`:""}`); }
+  const contentType=response.headers.get("content-type")||"image/jpeg";
+  const buffer=Buffer.from(await response.arrayBuffer());
+  if(!buffer.length) throw new Error("Pollinations returned an empty image.");
+  return {data:buffer.toString("base64"),mime:contentType,model};
 }
 
 router.post("/image-generate", optionalApiKey, async (req,res) => {
   try {
-    const prompt = String(req.body?.prompt || "").trim();
-    if (!prompt) return res.status(400).json({success:false,message:"Enter an image prompt."});
-    const result = await pollinationsImage(prompt);
+    const prompt=String(req.body?.prompt||"").trim();
+    if(!prompt) return res.status(400).json({success:false,message:"Enter an image prompt."});
+    const result=await pollinationsImage(prompt);
     return res.json({success:true,image:`data:${result.mime};base64,${result.data}`,model:result.model});
-  } catch (error) {
-    console.error("Pollinations image generation error:", error);
-    return res.status(500).json({success:false,message:error.message || "Image generation failed."});
-  }
+  } catch(error) { console.error("Pollinations image generation error:",error); return res.status(500).json({success:false,message:error.message||"Image generation failed."}); }
 });
 
 router.post("/image-upscale", optionalApiKey, upload.single("file"), async (req,res) => {
-  try {
-    if (!req.file) return res.status(400).json({success:false,message:"No image was uploaded."});
-    throw new Error("AI upscaling is not enabled yet. Image generation now uses Pollinations, while Text-to-Audio uses OpenRouter.");
-  } catch (error) { return res.status(503).json({success:false,message:error.message}); }
+  try { if(!req.file) return res.status(400).json({success:false,message:"No image was uploaded."}); throw new Error("AI upscaling is not enabled yet. Image generation uses Pollinations, while Text-to-Audio uses OpenRouter."); }
+  catch(error) { return res.status(503).json({success:false,message:error.message}); }
   finally { cleanup(req.file?.path); }
 });
 
 router.post("/text-to-audio", optionalApiKey, async (req,res) => {
   try {
-    const key = process.env.OPENROUTER_API_KEY;
-    if (!key) return res.status(503).json({success:false,message:"OPENROUTER_API_KEY is not configured on the backend."});
-    const text = String(req.body?.text || "").trim();
-    if (!text) return res.status(400).json({success:false,message:"Enter text to convert to audio."});
-    const model = process.env.OPENROUTER_TTS_MODEL || "deepgram/flux-tts:free";
-    const voice = String(req.body?.voice || "flux-haley-en");
-    const body = {model,input:text,voice,response_format:"mp3",speed:Math.max(0.85,Math.min(1.15,Number(req.body?.speed)||1))};
-    const response = await fetch("https://openrouter.ai/api/v1/audio/speech",{method:"POST",headers:openRouterHeaders(),body:JSON.stringify(body)});
-    if (!response.ok) { const detail=await response.text().catch(()=>""); throw new Error(`OpenRouter TTS returned ${response.status}${detail?`: ${detail.slice(0,400)}`:""}`); }
+    const key=process.env.OPENROUTER_API_KEY;
+    if(!key) return res.status(503).json({success:false,message:"OPENROUTER_API_KEY is not configured on the backend."});
+    const text=String(req.body?.text||"").trim();
+    if(!text) return res.status(400).json({success:false,message:"Enter text to convert to audio."});
+    const model=process.env.OPENROUTER_TTS_MODEL||"deepgram/flux-tts:free";
+    const voice=String(req.body?.voice||"flux-haley-en");
+    const body={model,input:text,voice,response_format:"mp3",speed:Math.max(0.85,Math.min(1.15,Number(req.body?.speed)||1))};
+    const response=await fetch("https://openrouter.ai/api/v1/audio/speech",{method:"POST",headers:openRouterHeaders(),body:JSON.stringify(body)});
+    if(!response.ok){const detail=await response.text().catch(()=>"");throw new Error(`OpenRouter TTS returned ${response.status}${detail?`: ${detail.slice(0,400)}`:""}`);}
     const buffer=Buffer.from(await response.arrayBuffer());
-    res.setHeader("Content-Type",response.headers.get("content-type")||"audio/mpeg");
-    res.setHeader("Content-Disposition","attachment; filename=\"convertflow-ai-voice.mp3\"");
-    res.setHeader("Content-Length",String(buffer.length));
-    return res.end(buffer);
-  } catch(error) {
-    console.error("OpenRouter TTS error:",error);
-    return res.status(500).json({success:false,message:error.message||"Text-to-audio failed."});
-  }
+    res.setHeader("Content-Type",response.headers.get("content-type")||"audio/mpeg");res.setHeader("Content-Disposition","attachment; filename=\"convertflow-ai-voice.mp3\"");res.setHeader("Content-Length",String(buffer.length));return res.end(buffer);
+  } catch(error){console.error("OpenRouter TTS error:",error);return res.status(500).json({success:false,message:error.message||"Text-to-audio failed."});}
 });
 
 export default router;
