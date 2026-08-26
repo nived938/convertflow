@@ -14,42 +14,50 @@ const cleanup = (...files) => files.flat().forEach(file => { if (file && fs.exis
 const mimeFromPath = file => ({ ".png":"image/png", ".jpg":"image/jpeg", ".jpeg":"image/jpeg", ".webp":"image/webp", ".gif":"image/gif" })[path.extname(file).toLowerCase()] || "application/octet-stream";
 const openRouterHeaders = () => ({ Authorization:`Bearer ${process.env.OPENROUTER_API_KEY}`, "Content-Type":"application/json", "HTTP-Referer":process.env.FRONTEND_URL || "https://convertflow-seven-delta.vercel.app", "X-OpenRouter-Title":"ConvertFlow" });
 
-// OpenRouter's free image catalog changes over time. Recraft V4.1 Pro is currently listed as a free image endpoint.
-const FREE_IMAGE_MODEL = "recraft/recraft-v4.1-pro:free";
+// Image generation uses Pollinations so OpenRouter remains dedicated to audio.
+// The model can be changed in Render without touching the frontend.
+const DEFAULT_IMAGE_MODEL = "nanobanana-2";
 
-async function openRouterImage(prompt, size="1K", input=null) {
-  const key=process.env.OPENROUTER_API_KEY;
-  if(!key) throw new Error("OPENROUTER_API_KEY is not configured on the backend.");
-  const model=process.env.OPENROUTER_IMAGE_MODEL || FREE_IMAGE_MODEL;
-  const body={model,prompt,n:1};
-  if (model !== FREE_IMAGE_MODEL && ["0.5K","1K","2K","4K"].includes(size)) body.resolution=size;
-  if(input) body.input_references=[`data:${input.mime};base64,${input.data}`];
-  const response=await fetch("https://openrouter.ai/api/v1/images",{method:"POST",headers:openRouterHeaders(),body:JSON.stringify(body)});
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok) throw new Error(result?.error?.message || result?.message || `OpenRouter image request failed (${response.status}).`);
-  const image=result?.data?.[0];
-  if(!image?.b64_json) throw new Error("OpenRouter completed without returning image data.");
-  return {data:image.b64_json,mime:image.media_type||"image/png",usage:result?.usage};
+async function pollinationsImage(prompt, size="1K") {
+  const key=process.env.POLLINATIONS_API_KEY;
+  if(!key) throw new Error("POLLINATIONS_API_KEY is not configured on the backend.");
+  const model=process.env.POLLINATIONS_IMAGE_MODEL || DEFAULT_IMAGE_MODEL;
+  const dimensions = size === "2K" ? [1536,1536] : size === "4K" ? [2048,2048] : [1024,1024];
+  const params=new URLSearchParams({model,width:String(dimensions[0]),height:String(dimensions[1]),n:"1"});
+  const url=`https://gen.pollinations.ai/image/${encodeURIComponent(prompt)}?${params}`;
+  const response=await fetch(url,{headers:{Authorization:`Bearer ${key}`}});
+  if(!response.ok){const detail=await response.text().catch(()=>"");throw new Error(`Pollinations image request failed (${response.status})${detail?`: ${detail.slice(0,400)}`:""}`);}
+  const contentType=response.headers.get("content-type")||"image/jpeg";
+  const buffer=Buffer.from(await response.arrayBuffer());
+  return {data:buffer.toString("base64"),mime:contentType,model};
 }
 
 router.post("/image-generate",optionalApiKey,async(req,res)=>{
   try{
     const prompt=String(req.body?.prompt||"").trim();
     if(!prompt) return res.status(400).json({success:false,message:"Enter an image prompt."});
-    const result=await openRouterImage(prompt,"1K");
-    return res.json({success:true,image:`data:${result.mime};base64,${result.data}`,usage:result.usage||null,model:process.env.OPENROUTER_IMAGE_MODEL||FREE_IMAGE_MODEL,free:true});
-  }catch(error){console.error("OpenRouter image generation error:",error);return res.status(500).json({success:false,message:error.message||"Image generation failed."});}
+    const result=await pollinationsImage(prompt,"1K");
+    return res.json({success:true,image:`data:${result.mime};base64,${result.data}`,model:result.model});
+  }catch(error){console.error("Pollinations image generation error:",error);return res.status(500).json({success:false,message:error.message||"Image generation failed."});}
 });
 
 router.post("/image-upscale",optionalApiKey,upload.single("file"),async(req,res)=>{
   try{
     if(!req.file) return res.status(400).json({success:false,message:"No image was uploaded."});
+    const inputBuffer=fs.readFileSync(req.file.path);
+    // Pollinations image editing is model/provider dependent. For a reliable no-credit fallback,
+    // use the source image as a reference URL only when the selected provider supports it.
+    // The current generation endpoint cannot accept local binary references, so fail clearly instead
+    // of silently returning a resized image and calling it AI enhancement.
+    const model=process.env.POLLINATIONS_IMAGE_EDIT_MODEL || "gptimage";
     const size=String(req.body?.quality||"4k").toLowerCase()==="2k"?"2K":"4K";
-    const input={mime:mimeFromPath(req.file.path),data:fs.readFileSync(req.file.path).toString("base64")};
-    const result=await openRouterImage(`Enhance this exact image as a professional AI super-resolution restoration. Preserve the subject, identity, composition, colors, text, logos and framing. Reconstruct plausible missing fine detail, improve edges, textures, faces and clarity, reduce noise and compression artifacts. Do not redesign, stylize, crop or add objects. Return only the enhanced image. Target ${size}.`,size,input);
-    const buffer=Buffer.from(result.data,"base64");
-    res.setHeader("Content-Type",result.mime);res.setHeader("Content-Disposition",`attachment; filename="convertflow-ai-upscaled.${result.mime.includes("jpeg")?"jpg":"png"}"`);res.setHeader("Content-Length",String(buffer.length));return res.end(buffer);
-  }catch(error){console.error("OpenRouter AI upscale error:",error);return res.status(500).json({success:false,message:error.message||"AI upscaling failed."});}
+    const dataUrl=`data:${mimeFromPath(req.file.path)};base64,${inputBuffer.toString("base64")}`;
+    const response=await fetch("https://gen.pollinations.ai/v1/images/edits",{method:"POST",headers:{Authorization:`Bearer ${process.env.POLLINATIONS_API_KEY}`},body:(()=>{const form=new FormData();form.append("image",new Blob([inputBuffer],{type:mimeFromPath(req.file.path)}),path.basename(req.file.path));form.append("prompt",`Professionally restore and upscale this exact image to ${size}. Preserve identity, composition, colors, text, logos and framing. Reconstruct fine details, improve edges and textures, reduce noise and compression artifacts. Do not add objects, crop or redesign it.`);form.append("model",model);return form;})()});
+    if(!response.ok){const detail=await response.text().catch(()=>"");throw new Error(`Pollinations image editing failed (${response.status})${detail?`: ${detail.slice(0,400)}`:""}`);}
+    const contentType=response.headers.get("content-type")||"image/png";
+    const buffer=Buffer.from(await response.arrayBuffer());
+    res.setHeader("Content-Type",contentType);res.setHeader("Content-Disposition",`attachment; filename="convertflow-ai-upscaled.${contentType.includes("jpeg")?"jpg":"png"}`);res.setHeader("Content-Length",String(buffer.length));return res.end(buffer);
+  }catch(error){console.error("Pollinations AI upscale error:",error);return res.status(500).json({success:false,message:error.message||"AI upscaling failed."});}
   finally{cleanup(req.file?.path);}
 });
 
