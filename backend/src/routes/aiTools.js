@@ -13,41 +13,11 @@ const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
 const cleanup = (...files) => files.flat().forEach(file => { if (file && fs.existsSync(file)) { try { fs.unlinkSync(file); } catch {} } });
 const openRouterHeaders = () => ({ Authorization:`Bearer ${process.env.OPENROUTER_API_KEY}`, "Content-Type":"application/json", "HTTP-Referer":process.env.FRONTEND_URL || "https://convertflow-seven-delta.vercel.app", "X-OpenRouter-Title":"ConvertFlow" });
 
-async function googleImage(prompt) {
-  const key = process.env.GOOGLE_API_KEY;
-  if (!key) throw new Error("GOOGLE_API_KEY is not configured on the backend.");
-  const model = process.env.GOOGLE_IMAGE_MODEL || "gemini-2.5-flash-image";
-  const endpoint = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type":"application/json" },
-    body: JSON.stringify({
-      contents: [{ role:"user", parts:[{ text:`Generate a high-quality image from this prompt. Return the image itself, not a text description. Prompt: ${prompt}` }] }],
-      generationConfig: { responseModalities:["IMAGE"] }
-    })
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`Google image generation failed (${response.status}): ${result?.error?.message || "Unknown Google API error"}`);
-  const parts = result?.candidates?.flatMap(c => c?.content?.parts || []) || [];
-  const imagePart = parts.find(p => p?.inlineData?.data || p?.inline_data?.data);
-  const data = imagePart?.inlineData?.data || imagePart?.inline_data?.data;
-  const mime = imagePart?.inlineData?.mimeType || imagePart?.inline_data?.mime_type || "image/png";
-  if (!data) throw new Error("Google completed the request but did not return an image.");
-  return { data, mime, model };
-}
-
-router.post("/image-generate", optionalApiKey, async (req,res) => {
-  try {
-    const prompt=String(req.body?.prompt||"").trim();
-    if(!prompt) return res.status(400).json({success:false,message:"Enter an image prompt."});
-    const result=await googleImage(prompt);
-    return res.json({success:true,image:`data:${result.mime};base64,${result.data}`,model:result.model});
-  } catch(error) { console.error("Google image generation error:",error); return res.status(500).json({success:false,message:error.message||"Image generation failed."}); }
-});
+// Image generation is handled by Puter.js in the browser. No ConvertFlow image API key is required.
+router.post("/image-generate", optionalApiKey, async (_req,res) => res.status(410).json({success:false,message:"Image generation uses Puter.js. Please use the Advanced Image Generator in the frontend."}));
 
 router.post("/image-upscale", optionalApiKey, upload.single("file"), async (req,res) => {
-  try { if(!req.file) return res.status(400).json({success:false,message:"No image was uploaded."}); throw new Error("AI upscaling is not enabled yet. Image generation uses Google Vertex AI, while Text-to-Audio uses OpenRouter."); }
-  catch(error) { return res.status(503).json({success:false,message:error.message}); }
+  try { if(!req.file) return res.status(400).json({success:false,message:"No image was uploaded."}); return res.status(503).json({success:false,message:"AI upscaling is temporarily unavailable. ConvertFlow will not fake AI enhancement with simple pixel enlargement."}); }
   finally { cleanup(req.file?.path); }
 });
 
