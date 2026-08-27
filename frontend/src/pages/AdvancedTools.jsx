@@ -37,7 +37,25 @@ export default function AdvancedTools(){
  async function run(){setResult(null);if(active==="ai-image"){
    if(!aiPrompt.trim()){setResult({error:"Enter an image prompt."});return}
    setAiGenerating(true);setResult({generating:true});
-   try{const r=await const image = await window.puter.ai.txt2img(aiPrompt, {model: "flux.1",quality: "high",width: 1024,height: 1024});const d=await r.json();if(!r.ok||!d.success)throw new Error(d.message||`Generation failed (${r.status})`);setResult({dataUrl:d.image,name:"convertflow-ai-generated.png"})}catch(e){setResult({error:e.message})}finally{setAiGenerating(false)}
+   try {
+  const image = await window.puter.ai.txt2img(aiPrompt, {
+    model: "flux.1",
+    quality: "high",
+    width: 1024,
+    height: 1024
+  });
+
+  const src = image?.src || image?.url || image;
+
+  if (!src) {
+    throw new Error("Puter returned no image.");
+  }
+
+  setResult({
+    dataUrl: src,
+    name: "convertflow-ai-generated.png"
+  });
+}catch(e){setResult({error:e.message})}finally{setAiGenerating(false)}
    return}
   if(active==="tts"){
    if(!ttsText.trim()){setResult({error:"Enter text to convert to audio."});return}
