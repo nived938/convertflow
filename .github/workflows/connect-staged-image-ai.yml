@@ -14,22 +14,26 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          p = Path('frontend/src/pages/AdvancedTools.jsx')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace('["ai-image","AI Image Generator",Sparkles,"AI image generation is currently unavailable."]', '["ai-image","AI Image Generator",Sparkles,"Generate images through ConvertFlow\'s staged AI image service."]')
-          old = 'if(active==="ai-image"){setResult({info:"This feature is currently unavailable"});return}if(active==="scan")return;'
-          new = '''if(active==="ai-image"){
+          p=Path('frontend/src/pages/AdvancedTools.jsx')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('["ai-image","AI Image Generator",Sparkles,"AI image generation is currently unavailable."]','["ai-image","AI Image Generator",Sparkles,"Generate images through ConvertFlow\\\'s staged AI image service."]')
+          old='if(active==="ai-image"){setResult({info:"This feature is currently unavailable"});return}if(active==="scan")return;'
+          new='''if(active==="ai-image"){
    const api=`${import.meta.env.VITE_API_URL||"https://convertflow-backend.onrender.com/api"}/tools/image-generate`;
    if(!aiPrompt.trim()){setResult({error:"Enter an image prompt."});return}
    setAiGenerating(true);setResult({generating:true});
    try{const sizes={"0.5K":512,"1K":1024,"2K":1024,"4K":1024};const size=sizes[aiSize]||1024;const r=await fetch(api,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:aiPrompt,width:size,height:size})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.success)throw new Error(d.message||`Image generation failed (${r.status})`);setResult({dataUrl:d.image,name:"convertflow-ai-generated.png",jobId:d.jobId})}catch(e){setResult({error:e.message||"Image generation failed."})}finally{setAiGenerating(false)}
    return
   }if(active==="scan")return;'''
-          if old in s:
-              s = s.replace(old, new)
+          if old in s: s=s.replace(old,new)
           if 'const [aiPrompt,setAiPrompt]' not in s:
-              s = s.replace('[ttsText,setTtsText]', '[aiPrompt,setAiPrompt]=useState(""),[aiSize,setAiSize]=useState("1K"),[aiGenerating,setAiGenerating]=useState(false),[ttsText,setTtsText]')
-          p.write_text(s, encoding='utf-8')
+              s=s.replace('[ttsText,setTtsText]', '[aiPrompt,setAiPrompt]=useState(""),[aiSize,setAiSize]=useState("1K"),[aiGenerating,setAiGenerating]=useState(false),[ttsText,setTtsText]')
+          old_ui='{active==="ai-image"&&<div className="advanced-info">This feature is currently unavailable</div>}'
+          new_ui='{active==="ai-image"&&<div className="advanced-ai-form"><textarea className="advanced-input" rows="6" value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} placeholder="Describe the image you want..."/><select className="advanced-input" value={aiSize} onChange={e=>setAiSize(e.target.value)}><option>0.5K</option><option>1K</option><option>2K</option><option>4K</option></select><button className="advanced-run" disabled={aiGenerating} onClick={run}><Sparkles size={17}/>{aiGenerating?"Generating...":"Generate image"}</button></div>}'
+          if old_ui in s: s=s.replace(old_ui,new_ui)
+          old_preview='<span>Nano Banana is creating the preview</span>'
+          s=s.replace(old_preview,'<span>ConvertFlow staged AI service is creating the preview</span>')
+          p.write_text(s,encoding='utf-8')
       - name: Commit patch
         run: |
           git config user.name 'github-actions[bot]'
