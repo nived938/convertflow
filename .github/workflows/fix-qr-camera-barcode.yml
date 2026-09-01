@@ -1,0 +1,43 @@
+name: Fix QR camera and barcode
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/src/pages/AdvancedTools.jsx'
+      - '.github/workflows/fix-qr-camera-barcode.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch scanner and barcode
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('frontend/src/pages/AdvancedTools.jsx')
+          s=p.read_text()
+          old='''const openCamera=async()=>{setCameraError("");if(!isMobile){setCameraError("Use mobile for this tool");return}if(!navigator.mediaDevices?.getUserMedia){setCameraError("Camera access is not supported by this browser.");return}try{stream.current=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});setCameraOpen(true);setTimeout(async()=>{if(!video.current||!stream.current)return;video.current.srcObject=stream.current;await video.current.play();const detector="BarcodeDetector" in window?new window.BarcodeDetector({formats:["qr_code"]}):null;const loop=async()=>{if(!video.current||!stream.current)return;try{if(detector){const codes=await detector.detect(video.current);if(codes.length){openQRText(codes[0].rawValue);return}}}catch(e){}scanFrame.current=requestAnimationFrame(loop)};loop()},50)}catch(err){setCameraError(err.name==="NotAllowedError"?"Camera permission was denied. Allow camera access and try again.":err.message||"Could not open the camera.")}};'''
+          new='''const openCamera=async()=>{setCameraError("");if(!isMobile){setCameraError("Use mobile for this tool");return}if(!window.isSecureContext){setCameraError("Camera access requires HTTPS. Open ConvertFlow over a secure connection.");return}if(!navigator.mediaDevices?.getUserMedia){setCameraError("Camera access is not supported by this browser.");return}try{const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});stream.current=media;setCameraOpen(true)}catch(err){setCameraError(err.name==="NotAllowedError"?"Camera permission was denied. Allow camera access and try again.":err.name==="NotFoundError"?"No camera was found on this device.":err.message||"Could not open the camera.")}};'''
+          if old not in s: raise SystemExit('openCamera pattern not found')
+          s=s.replace(old,new)
+          old2='''useEffect(()=>()=>stopCamera(),[]);'''
+          new2='''useEffect(()=>()=>stopCamera(),[]);
+ useEffect(()=>{if(!cameraOpen||!video.current||!stream.current)return;let cancelled=false;const attach=async()=>{try{video.current.srcObject=stream.current;await video.current.play();const detector="BarcodeDetector" in window?new window.BarcodeDetector({formats:["qr_code"]}):null;const loop=async()=>{if(cancelled||!video.current||!stream.current)return;try{if(detector){const codes=await detector.detect(video.current);if(codes.length){openQRText(codes[0].rawValue);return}}}catch(e){}scanFrame.current=requestAnimationFrame(loop)};loop()}catch(err){setCameraError(err.message||"Could not start the camera preview.")}};attach();return()=>{cancelled=true;if(scanFrame.current)cancelAnimationFrame(scanFrame.current)}},[cameraOpen]);'''
+          if old2 not in s: raise SystemExit('camera effect pattern not found')
+          s=s.replace(old2,new2)
+          old3='''bwipjs.toCanvas(c,{bcid:"code128",text,scale:4,height:18,includetext:true});'''
+          new3='''bwipjs.toCanvas(c,{bcid:"code128",text,scale:4,height:18,includetext:true,backgroundcolor:"171717",barcolor:"FFFFFF",textcolor:"FFFFFF"});'''
+          if old3 not in s: raise SystemExit('barcode pattern not found')
+          s=s.replace(old3,new3)
+          p.write_text(s)
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/pages/AdvancedTools.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix QR camera startup and improve barcode contrast [skip ci]"
+          git push
