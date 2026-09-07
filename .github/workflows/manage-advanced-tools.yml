@@ -1,0 +1,106 @@
+name: ConvertFlow tool controls and dedicated pages
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch backend controls
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('backend/src/routes/admin.js')
+          s=p.read_text(encoding='utf-8')
+          marker='router.post("/login",async(req,res)=>'
+          if 'advanced_tools_enabled' not in s:
+            insert='''\nconst DEFAULT_ADVANCED_TOOLS={analyzer:true,duplicates:true,rename:true,split:true,merge:true,contact:true,palette:true,blur:true,pixelate:true,qr:true,scan:true,barcode:true,beautify:true,favicon:true,webp:true,command:true,"ai-image":false,tts:true};\nasync function getAdvancedTools(){const r=await sb("/rest/v1/site_control?id=eq.1&select=advanced_tools_enabled");const data=await r.json().catch(()=>[]);if(!r.ok||!data[0])throw Object.assign(new Error("Could not read Advanced Tools settings."),{statusCode:502});return{...DEFAULT_ADVANCED_TOOLS,...(data[0].advanced_tools_enabled||{})};}\nasync function setAdvancedTool(id,enabled){if(!Object.prototype.hasOwnProperty.call(DEFAULT_ADVANCED_TOOLS,id))throw Object.assign(new Error("Unknown Advanced Tool."),{statusCode:400});const current=await getAdvancedTools();current[id]=Boolean(enabled);const r=await sb("/rest/v1/site_control?id=eq.1",{method:"PATCH",headers:{"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify({advanced_tools_enabled:current,updated_at:new Date().toISOString()})});if(!r.ok)throw Object.assign(new Error(`Supabase returned HTTP ${r.status}.`),{statusCode:502});return{success:true,tools:current};}\nrouter.get("/tools/status",async(req,res)=>{try{return res.json({success:true,tools:await getAdvancedTools()});}catch(e){return res.status(e.statusCode||502).json({success:false,message:e.message});}});\nrouter.patch("/tools/:id",requireAdmin,async(req,res)=>{try{const out=await setAdvancedTool(String(req.params.id),req.body?.enabled===true);await writeLog("success","advanced-tool.changed",`Advanced tool ${req.params.id} ${req.body?.enabled===true?"enabled":"disabled"}`,{id:req.params.id,enabled:req.body?.enabled===true});return res.json(out);}catch(e){return res.status(e.statusCode||502).json({success:false,message:e.message});}});\n'''
+            s=s.replace(marker,insert+marker)
+            p.write_text(s,encoding='utf-8')
+
+      - name: Patch Advanced Tools routes and availability UI
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/AdvancedTools.jsx')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('import { useEffect, useRef, useState } from "react";','import { useEffect, useRef, useState } from "react";\nimport { useNavigate, useParams } from "react-router-dom";')
+          s=s.replace('export default function AdvancedTools(){\n const [active,setActive]=useState("analyzer")', 'export default function AdvancedTools(){\n const navigate=useNavigate(); const { tool: routeTool }=useParams();\n const [active,setActive]=useState(routeTool||"analyzer"),[enabledTools,setEnabledTools]=useState({}),[toolsLoading,setToolsLoading]=useState(true)')
+          s=s.replace(' const tool=tools.find(t=>t[0]===active);', ' const tool=tools.find(t=>t[0]===active)||tools[0];\n useEffect(()=>{setActive(routeTool||"analyzer");setResult(null);setFiles([])},[routeTool]);\n useEffect(()=>{let alive=true;fetch(`${import.meta.env.VITE_API_URL||"https://convertflow-backend.onrender.com/api"}/admin/tools/status`).then(r=>r.json()).then(d=>{if(alive)setEnabledTools(d.tools||{})}).catch(()=>{}).finally(()=>alive&&setToolsLoading(false));return()=>{alive=false}},[]);')
+          s=s.replace(' async function run(){setResult(null);', ' async function run(){setResult(null);if(enabledTools[active]===false){setResult({info:"This tool is not available"});return}')
+          s=s.replace('onClick={()=>{stopCamera();setActive(id);setResult(null);setFiles([])}}', 'onClick={()=>{stopCamera();setResult(null);setFiles([]);navigate(`/advanced-tools/${id}`)}}')
+          s=s.replace('if(first)setActive(first[0])', 'if(first)navigate(`/advanced-tools/${first[0]}`)')
+          s=s.replace('<section className="advanced-panel">', '<section className={`advanced-panel ${enabledTools[active]===false?"tool-disabled":""}`}>')
+          s=s.replace('{active==="ai-image"&&<div className="advanced-info">This feature is currently unavailable</div>}', '{enabledTools[active]===false&&<div className="advanced-info">This tool is not available</div>}')
+          s=s.replace('<div className="advanced-shell"><section className="advanced-hero">', '<div className="advanced-shell"><section className="advanced-hero">')
+          p.write_text(s,encoding='utf-8')
+
+      - name: Patch regular Tools pages
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/ToolsEnhanced.jsx')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('import { useEffect, useMemo, useRef, useState } from "react";','import { useEffect, useMemo, useRef, useState } from "react";\nimport { useNavigate, useParams } from "react-router-dom";')
+          s=s.replace('export default function ToolsEnhanced(){\n const [active,setActive]=useState(null)', 'export default function ToolsEnhanced(){\n const navigate=useNavigate(); const { tool: routeTool }=useParams();\n const [active,setActive]=useState(routeTool||null)')
+          s=s.replace(' const input=useRef(null),tool=TOOLS.find(t=>t[0]===active);', ' const input=useRef(null),tool=TOOLS.find(t=>t[0]===active);\n useEffect(()=>{setActive(routeTool||null)},[routeTool]);')
+          s=s.replace('setTimeout(()=>document.querySelector(".te-workspace")?.scrollIntoView({behavior:"smooth",block:"start"}),60)', 'navigate(`/tools/${id}`)')
+          s=s.replace('<section className="te-tools">', '{!routeTool&&<section className="te-tools">')
+          s=s.replace('</section>\n {history.length>0&&!active&&<section className="te-history">', '</section>}\n {history.length>0&&!active&&<section className="te-history">')
+          s=s.replace('onClick={()=>setActive(null)}', 'onClick={()=>navigate("/tools")}')
+          p.write_text(s,encoding='utf-8')
+
+      - name: Patch app routes
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/App.jsx')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('<Route path="/tools" element={<ToolsEnhanced/>}/>', '<Route path="/tools" element={<ToolsEnhanced/>}/><Route path="/tools/:tool" element={<ToolsEnhanced/>}/>')
+          s=s.replace('<Route path="/advanced-tools" element={<AdvancedTools/>}/>', '<Route path="/advanced-tools" element={<AdvancedTools/>}/><Route path="/advanced-tools/:tool" element={<AdvancedTools/>}/>')
+          p.write_text(s,encoding='utf-8')
+
+      - name: Patch styles
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/advancedTools.css')
+          s=p.read_text(encoding='utf-8')
+          extra='''\n.advanced-panel.tool-disabled>*:not(.advanced-panel-head):not(.advanced-info){display:none!important}.advanced-panel.tool-disabled .advanced-panel-head{opacity:.95}.advanced-info{border:1px solid rgba(239,68,68,.18);padding:28px!important;text-align:center;font-weight:800;font-size:16px}.advanced-tool-single{grid-template-columns:minmax(0,1fr)!important}.advanced-tool-back{margin-bottom:18px}\n'''
+          if '.advanced-panel.tool-disabled' not in s:p.write_text(s+extra,encoding='utf-8')
+          p=Path('frontend/src/pages/toolsEnhanced.css');s=p.read_text(encoding='utf-8');extra='''\n.te-single-page{max-width:980px;margin:0 auto}.te-single-page .te-workspace{margin-top:20px}\n''';
+          if '.te-single-page' not in s:p.write_text(s+extra,encoding='utf-8')
+
+      - name: Patch Admin Control Panel
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/AdminControl.jsx')
+          s=p.read_text(encoding='utf-8')
+          defs='''const ADVANCED_TOOL_CONTROLS=[\n ["analyzer","File Information Analyzer","Inspect file metadata and dimensions."],["duplicates","Duplicate Detector","Find duplicate files with SHA-256."],["rename","Smart Filename Generator","Generate clean filenames."],["split","File Splitter","Split files into chunks."],["merge","File Merger","Merge compatible files."],["contact","Contact Sheet","Create image thumbnail sheets."],["palette","Color Palette Extractor","Extract dominant colors."],["blur","Image Blur","Blur images."],["pixelate","Image Pixelate","Pixelate images."],["qr","QR Generator","Generate QR codes."],["scan","QR Scanner","Scan QR codes."],["barcode","Barcode Generator","Generate Code 128 barcodes."],["beautify","Screenshot Beautifier","Beautify screenshots."],["favicon","Favicon Generator","Generate favicon sizes."],["webp","Animated WebP Converter","Convert animated media to WebP."],["command","ConvertFlow Command Generator","Generate CLI commands."],["ai-image","AI Image Generator","Generate AI images."],["tts","Text to Audio","Generate speech with Deepgram Flux."]\n];\n'''
+          if 'ADVANCED_TOOL_CONTROLS' not in s:s=s.replace('export default function AdminControl(){',defs+'\nexport default function AdminControl(){')
+          s=s.replace('[supporterName,setSupporterName]=useState("");', '[supporterName,setSupporterName]=useState("");const[advancedTools,setAdvancedTools]=useState({});')
+          s=s.replace('setSupporters(sp.supporters||[]);setMessage("")', 'setSupporters(sp.supporters||[]);setAdvancedTools(s.tools||{});setMessage("")')
+          s=s.replace('async function control(action,extra={}){', 'async function toggleAdvancedTool(id,enabled){setBusy(true);try{const d=await request(`/admin/tools/${id}`,token,{method:"PATCH",body:JSON.stringify({enabled})});setAdvancedTools(d.tools||{});setMessage(`${id} ${enabled?"enabled":"disabled"}.`)}catch(e){setMessage(e.message)}finally{setBusy(false)}}\nasync function control(action,extra={}){')
+          section='''<section style={{...card,padding:22,marginTop:16}}><span className="section-label">ADVANCED TOOLS</span><h2 style={{margin:"5px 0"}}>Tool availability</h2><p style={{opacity:.55,fontSize:13}}>Enable or disable every Advanced Tool. Disabled tools show “This tool is not available” and cannot run.</p><div style={{display:"grid",gap:9,marginTop:14}}>{ADVANCED_TOOL_CONTROLS.map(([id,title,description])=><Toggle key={id} checked={advancedTools[id]!==false} disabled={busy} onChange={e=>toggleAdvancedTool(id,e.target.checked)} title={title} description={description}/>)}</div></section>'''
+          if 'Tool availability</h2>' not in s:s=s.replace('<section style={{...card,padding:22,marginTop:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:15,flexWrap:"wrap"}}>',section+'<section style={{...card,padding:22,marginTop:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:15,flexWrap:"wrap"}}>')
+          p.write_text(s,encoding='utf-8')
+
+      - name: Apply database migration check
+        run: |
+          grep -q 'advanced_tools_enabled' supabase/advanced_tool_controls.sql
+          node --check backend/src/routes/admin.js
+          npm --prefix frontend install --no-audit --no-fund
+          npm --prefix frontend run build
+
+      - name: Commit all changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/src/routes/admin.js frontend/src/pages/AdvancedTools.jsx frontend/src/pages/ToolsEnhanced.jsx frontend/src/pages/AdminControl.jsx frontend/src/pages/advancedTools.css frontend/src/pages/toolsEnhanced.css frontend/src/App.jsx supabase/advanced_tool_controls.sql
+          git diff --cached --quiet || git commit -m 'Add tool availability controls and dedicated tool pages'
+          git push
