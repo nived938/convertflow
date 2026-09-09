@@ -1,0 +1,8 @@
+import express from "express";
+import { verifyAdminToken, sb, writeLog } from "./admin.js";
+const router=express.Router();
+function requireAdmin(req,res,next){const a=String(req.headers.authorization||"");const token=a.startsWith("Bearer ")?a.slice(7):"";if(!verifyAdminToken(token))return res.status(401).json({success:false,message:"Unauthorized or expired admin session."});next()}
+async function readControl(){const r=await sb("/rest/v1/site_control?id=eq.1&select=advanced_tools_enabled");const d=await r.json().catch(()=>[]);if(!r.ok||!d[0])throw Object.assign(new Error("Could not read site controls."),{statusCode:502});return d[0].advanced_tools_enabled||{}}
+router.get("/status",async(req,res)=>{try{const c=await readControl();return res.json({success:true,enabled:c._download_section_enabled!==false})}catch(e){return res.status(e.statusCode||502).json({success:false,message:e.message})}});
+router.patch("/",requireAdmin,async(req,res)=>{try{const enabled=req.body?.enabled===true;const c=await readControl();c._download_section_enabled=enabled;const r=await sb("/rest/v1/site_control?id=eq.1",{method:"PATCH",headers:{"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify({advanced_tools_enabled:c,updated_at:new Date().toISOString()})});if(!r.ok)throw Object.assign(new Error(`Supabase returned HTTP ${r.status}.`),{statusCode:502});await writeLog("success","download-section.changed",`Homepage download section ${enabled?"enabled":"disabled"}`,{enabled});return res.json({success:true,enabled})}catch(e){return res.status(e.statusCode||502).json({success:false,message:e.message})}});
+export default router;
