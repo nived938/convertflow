@@ -1,0 +1,87 @@
+name: ConvertFlow UI and admin upgrade
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  upgrade:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch backend
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('backend/src/server.js'); s=p.read_text()
+          if 'downloadControlRoutes' not in s:
+            s=s.replace('import toolControlRoutes from "./routes/toolControl.js";', 'import toolControlRoutes from "./routes/toolControl.js"; import downloadControlRoutes from "./routes/downloadControl.js"; import siteConfigRoutes from "./routes/siteConfig.js";')
+            s=s.replace('app.use("/api/admin/tools",toolControlRoutes);', 'app.use("/api/admin/tools",toolControlRoutes); app.use("/api/admin/download-section",downloadControlRoutes); app.use("/api/site-config",siteConfigRoutes);')
+            p.write_text(s)
+          Path('backend/src/routes/downloadControl.js').write_text('''import express from "express";\nimport { verifyAdminToken, sb, writeLog } from "./admin.js";\nconst router=express.Router();\nfunction requireAdmin(req,res,next){const a=String(req.headers.authorization||"");const token=a.startsWith("Bearer ")?a.slice(7):"";if(!verifyAdminToken(token))return res.status(401).json({success:false,message:"Unauthorized or expired admin session."});next()}\nasync function getEnabled(){const r=await sb("/rest/v1/site_control?id=eq.1&select=advanced_tools_enabled");const d=await r.json().catch(()=>[]);if(!r.ok||!d[0])throw Object.assign(new Error("Could not read site controls."),{statusCode:502});return d[0].advanced_tools_enabled?d[0].advanced_tools_enabled._download_section_enabled!==false:true}\nrouter.get("/status",async(req,res)=>{try{return res.json({success:true,enabled:await getEnabled()})}catch(e){return res.status(e.statusCode||502).json({success:false,message:e.message})}});\nrouter.patch("/",requireAdmin,async(req,res)=>{try{const enabled=req.body?.enabled===true;const r=await sb("/rest/v1/site_control?id=eq.1",{method:"PATCH",headers:{"Content-Type":"application/json",Prefer:"return=representation"},body:JSON.stringify({advanced_tools_enabled:{...(await (async()=>{const x=await sb("/rest/v1/site_control?id=eq.1&select=advanced_tools_enabled");const d=await x.json().catch(()=>[]);return d[0]?.advanced_tools_enabled||{}})()),_download_section_enabled:enabled},updated_at:new Date().toISOString()})});if(!r.ok)throw Object.assign(new Error(`Supabase returned HTTP ${r.status}.`),{statusCode:502});await writeLog("success","download-section.changed",`Download section ${enabled?"enabled":"disabled"}`,{enabled});return res.json({success:true,enabled})}catch(e){return res.status(e.statusCode||502).json({success:false,message:e.message})}});\nexport default router;\n''')
+          Path('backend/src/routes/siteConfig.js').write_text('''import express from "express";\nimport { sb } from "./admin.js";\nconst router=express.Router();\nrouter.get("/",async(req,res)=>{try{const r=await sb("/rest/v1/site_control?id=eq.1&select=advanced_tools_enabled");const d=await r.json().catch(()=>[]);if(!r.ok||!d[0])throw new Error("Site configuration unavailable.");return res.json({success:true,downloadSectionEnabled:d[0].advanced_tools_enabled?d[0].advanced_tools_enabled._download_section_enabled!==false:true})}catch(e){return res.status(502).json({success:false,message:e.message,downloadSectionEnabled:true})}});\nexport default router;\n''')
+      - name: Restore original full Tools page routing
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/App.jsx'); s=p.read_text()
+          s=s.replace('import ToolsEnhanced from "./pages/ToolsEnhancedV2";', 'import ToolsEnhanced from "./pages/ToolsEnhanced";')
+          s=s.replace('import AdvancedTools from "./pages/AdvancedToolsV2";', 'import AdvancedTools from "./pages/AdvancedTools";')
+          p.write_text(s)
+      - name: Patch homepage download visibility
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/Home.jsx'); s=p.read_text()
+          if 'site-config' not in s:
+            s=s.replace('import { Link } from "react-router-dom";', 'import { Link } from "react-router-dom";\nimport { useEffect,useState } from "react";')
+            s=s.replace('export default function Home(){return', 'export default function Home(){const[downloadEnabled,setDownloadEnabled]=useState(true);useEffect(()=>{fetch(`${(import.meta.env.VITE_API_URL||"https://convertflow-backend.onrender.com/api").replace(/\\/$/,"")}/site-config`,{cache:"no-store"}).then(r=>r.json()).then(d=>setDownloadEnabled(d.downloadSectionEnabled!==false)).catch(()=>setDownloadEnabled(true)) ;return()=>{}},[]);return')
+            s=s.replace('<section className="seo-section"><span className="section-label">CONVERTFLOW APP</span><h2>Download ConvertFlow</h2>', '{downloadEnabled&&<section className="seo-section"><span className="section-label">CONVERTFLOW APP</span><h2>Download ConvertFlow</h2>')
+            s=s.replace('</section><section className="seo-section"><span className="section-label">WHY CONVERTFLOW</span>', '</section>}<section className="seo-section"><span className="section-label">WHY CONVERTFLOW</span>',1)
+            p.write_text(s)
+      - name: Patch Admin Control with Download toggle and Tool Utility shortcut
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/AdminControl.jsx'); s=p.read_text()
+          if 'downloadSectionEnabled' not in s:
+            s=s.replace('const[announcement,setAnnouncement]=useState({enabled:false,title:"",message:"",type:"info"})', 'const[announcement,setAnnouncement]=useState({enabled:false,title:"",message:"",type:"info"}),[downloadSectionEnabled,setDownloadSectionEnabled]=useState(true)')
+            marker='setMessage("")}catch(e){setMessage(e.message);'
+            replacement='setMessage("");try{const dc=await request("/admin/download-section/status",token);setDownloadSectionEnabled(dc.enabled!==false)}catch{} }catch(e){setMessage(e.message);'
+            if marker in s:s=s.replace(marker,replacement,1)
+            fn='''\nasync function toggleDownloadSection(enabled){setBusy(true);try{const d=await request("/admin/download-section",token,{method:"PATCH",body:JSON.stringify({enabled})});setDownloadSectionEnabled(d.enabled!==false);setMessage(d.enabled?"Homepage Download ConvertFlow section enabled.":"Homepage Download ConvertFlow section disabled.")}catch(e){setMessage(e.message)}finally{setBusy(false)}}\n'''
+            s=s.replace('async function control(action,extra={}){',fn+'async function control(action,extra={})',1)
+            card='''<section className="admin-feature-card"><div><span className="section-label">PUBLIC WEBSITE</span><h2>Download ConvertFlow</h2><p>Control whether the homepage shows the ConvertFlow app download section.</p></div><div className="admin-feature-actions"><span className={downloadSectionEnabled?"admin-state on":"admin-state off"}>{downloadSectionEnabled?"VISIBLE ON HOMEPAGE":"HIDDEN FROM HOMEPAGE"}</span><Toggle checked={downloadSectionEnabled} disabled={busy} onChange={e=>toggleDownloadSection(e.target.checked)} title={downloadSectionEnabled?"Download section enabled":"Download section disabled"} description="When disabled, the entire homepage download section is hidden."/><Button onClick={()=>navigate("/admin/control/tools")}><Wrench size={16}/> Tool Utility</Button></div></section>'''
+            if 'Tool Utility' not in s:s=s.replace('</main></div>',card+'</main></div>')
+            p.write_text(s)
+      - name: Improve advanced header separation
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/pages/AdvancedTools.jsx')
+          if p.exists():
+            s=p.read_text()
+            s=s.replace('<button className="advanced-run" onClick={()=>nav("/advanced-tools")}><ArrowLeft size={16}/> All tools</button><span>UTILITY</span>', '<div className="advanced-breadcrumb"><button className="advanced-back" onClick={()=>nav("/advanced-tools")}><ArrowLeft size={16}/> All Tools</button><span>UTILITY</span></div>')
+            p.write_text(s)
+          p=Path('frontend/src/pages/advancedTools.css')
+          if p.exists():
+            s=p.read_text(); extra='''\n.advanced-breadcrumb{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}.advanced-back{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(148,163,184,.22);border-radius:12px;padding:9px 13px;background:rgba(255,255,255,.06);color:inherit;font-weight:800;cursor:pointer;transition:.2s}.advanced-back:hover{transform:translateY(-2px);border-color:rgba(14,165,233,.45)}.advanced-breadcrumb>span{display:inline-flex;align-items:center;padding:7px 10px;border-radius:999px;background:rgba(14,165,233,.09);border:1px solid rgba(14,165,233,.16);font-size:11px;font-weight:900;letter-spacing:1.4px}\n''';
+            if '.advanced-breadcrumb{' not in s:p.write_text(s+extra)
+      - name: Improve status, light theme and global animations
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('frontend/src/index.css'); s=p.read_text(); extra='''\n/* ConvertFlow interaction polish */\n@keyframes cfPageIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}\n@keyframes cfFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}\nmain{animation:cfPageIn .45s ease both}button,.auth-submit,.info-card,.te-card,.seo-section,.feature-card,.status-row,.admin-control-page section{transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease,background-color .22s ease}button:hover:not(:disabled),.auth-submit:hover,.te-card:hover,.info-card:hover,.seo-section:hover{transform:translateY(-2px)}.te-card:hover,.info-card:hover,.seo-section:hover{box-shadow:0 16px 40px rgba(15,23,42,.10)}\n.status-notification-toggle{position:relative;display:inline-flex;align-items:center;gap:11px;margin-top:12px;padding:11px 15px;border:1px solid rgba(148,163,184,.22);border-radius:999px;background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(14,165,233,.06));color:inherit;font-weight:800;cursor:pointer;box-shadow:0 10px 26px rgba(15,23,42,.08);overflow:hidden}.status-notification-toggle::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.13),transparent);transform:translateX(-120%);transition:transform .55s ease}.status-notification-toggle:hover::after{transform:translateX(120%)}.status-toggle-dot{width:10px;height:10px;border-radius:50%;background:#94a3b8;box-shadow:0 0 0 5px rgba(148,163,184,.12)}.status-notification-toggle.enabled .status-toggle-dot{background:#22c55e;box-shadow:0 0 0 5px rgba(34,197,94,.13),0 0 16px rgba(34,197,94,.35)}\n.admin-feature-card{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,.8fr);gap:20px;align-items:center;margin-top:16px;padding:22px;border:1px solid rgba(148,163,184,.16);border-radius:24px;background:linear-gradient(180deg,rgba(17,25,39,.94),rgba(8,12,20,.94));box-shadow:0 20px 60px rgba(0,0,0,.18)}.admin-feature-actions{display:grid;gap:10px}.admin-state{display:inline-flex;justify-content:center;padding:8px 12px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.8px}.admin-state.on{background:rgba(34,197,94,.12);color:#86efac}.admin-state.off{background:rgba(239,68,68,.12);color:#fca5a5}\nhtml[data-theme="light"] body{background:radial-gradient(circle at 10% 0%,rgba(239,68,68,.07),transparent 30%),linear-gradient(180deg,#f8fafc,#eef3f8)!important;color:#172033!important}html[data-theme="light"] .site-header{background:rgba(255,255,255,.92)!important;box-shadow:0 10px 34px rgba(15,23,42,.08)!important}html[data-theme="light"] .te-card,html[data-theme="light"] .info-card,html[data-theme="light"] .seo-section,html[data-theme="light"] .te-workspace,html[data-theme="light"] .content-page>div{background:rgba(255,255,255,.88)!important;border-color:rgba(15,23,42,.10)!important;box-shadow:0 14px 34px rgba(15,23,42,.07)!important}html[data-theme="light"] input,html[data-theme="light"] textarea,html[data-theme="light"] select{background:#fff!important;color:#172033!important;border-color:rgba(15,23,42,.14)!important}html[data-theme="light"] p,html[data-theme="light"] small,html[data-theme="light"] .te-card p,html[data-theme="light"] .info-card span{color:#526074!important}html[data-theme="light"] .section-label{color:#b42318!important}\n@media(max-width:720px){.admin-feature-card{grid-template-columns:1fr}.status-notification-toggle{width:100%;justify-content:center}}\n@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}\n''';
+          if 'ConvertFlow interaction polish' not in s:p.write_text(s+extra)
+      - name: Build frontend
+        run: |
+          npm --prefix frontend install --no-audit --no-fund
+          npm --prefix frontend run build
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/src/server.js backend/src/routes/downloadControl.js backend/src/routes/siteConfig.js frontend/src/App.jsx frontend/src/pages/Home.jsx frontend/src/pages/AdminControl.jsx frontend/src/pages/AdvancedTools.jsx frontend/src/pages/advancedTools.css frontend/src/index.css .github/workflows/upgrade-admin-ui-and-preserve-tools.yml
+          git diff --cached --quiet || git commit -m 'Upgrade admin controls, animations, light theme, and tool routing'
+          git push
